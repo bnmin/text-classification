@@ -4,6 +4,10 @@ This code is modified from the following repositories:
 - https://github.com/dennybritz/cnn-text-classification-tf
 - https://github.com/roomylee/rnn-text-classification-tf
 
+## Use MLP, CNN or RNN
+Please uncommented one of the three blocks of model definition code (for MLP, CNN and RNN respectively)
+ to train a model with one of the network architectures
+
 ## Related blog post:
 
 "Implementing a CNN for Text Classification in Tensorflow" blog post.](http://www.wildml.com/2015/12/implementing-a-cnn-for-text-classification-in-tensorflow/)**
