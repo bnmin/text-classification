@@ -20,7 +20,7 @@ def convert_csv_to_data(csv_file, data_file):
 
     flat_all_columns = []
     with open(csv_file, newline='') as csvfile:
-        reader = csv.reader(csvfile, delimiter=',')#, quotechar='|')
+        reader = csv.reader(csvfile, delimiter=',')
         for row in reader:
             flat_all_columns.extend(row)
     rows = []
