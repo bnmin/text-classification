@@ -1,0 +1,2434 @@
+Class,Method,Parameter Names,Observed Arg Types,Observed Return Type,Source Code,Comments
+Addressable::URI,initialize,options,"options => (Hash<%bot, %bot> or Hash<Symbol, (Integer or String)> or Hash<Symbol, String>)
+",String,"    def initialize(options={})
+      if options.has_key?(:authority)
+        if (options.keys & [:userinfo, :user, :password, :host, :port]).any?
+          raise ArgumentError,
+            ""Cannot specify both an authority and any of the components "" +
+            ""within the authority.""
+        end
+      end
+      if options.has_key?(:userinfo)
+        if (options.keys & [:user, :password]).any?
+          raise ArgumentError,
+            ""Cannot specify both a userinfo and either the user or password.""
+        end
+      end
+
+      self.defer_validation do
+        # Bunch of crazy logic required because of the composite components
+        # like userinfo and authority.
+        self.scheme = options[:scheme] if options[:scheme]
+        self.user = options[:user] if options[:user]
+        self.password = options[:password] if options[:password]
+        self.userinfo = options[:userinfo] if options[:userinfo]
+        self.host = options[:host] if options[:host]
+        self.port = options[:port] if options[:port]
+        self.authority = options[:authority] if options[:authority]
+        self.path = options[:path] if options[:path]
+        self.query = options[:query] if options[:query]
+        self.query_values = options[:query_values] if options[:query_values]
+        self.fragment = options[:fragment] if options[:fragment]
+      end
+      self.to_s
+    end
+","##
+# Creates a new uri object from component parts.
+#
+# @option [String, #to_str] scheme The scheme component.
+# @option [String, #to_str] user The user component.
+# @option [String, #to_str] password The password component.
+# @option [String, #to_str] userinfo
+#   The userinfo component. If this is supplied, the user and password
+#   components must be omitted.
+# @option [String, #to_str] host The host component.
+# @option [String, #to_str] port The port component.
+# @option [String, #to_str] authority
+#   The authority component. If this is supplied, the user, password,
+#   userinfo, host, and port components must be omitted.
+# @option [String, #to_str] path The path component.
+# @option [String, #to_str] query The query component.
+# @option [String, #to_str] fragment The fragment component.
+#
+# @return [Addressable::URI] The constructed URI object.
+"
+Addressable::URI,freeze,"","",Addressable::URI,"    def freeze
+      self.normalized_scheme
+      self.normalized_user
+      self.normalized_password
+      self.normalized_userinfo
+      self.normalized_host
+      self.normalized_port
+      self.normalized_authority
+      self.normalized_site
+      self.normalized_path
+      self.normalized_query
+      self.normalized_fragment
+      self.hash
+      super
+    end
+","##
+# Freeze URI, initializing instance variables.
+#
+# @return [Addressable::URI] The frozen URI object.
+"
+Addressable::URI,scheme,"","",String,"    def scheme
+      return defined?(@scheme) ? @scheme : nil
+    end
+","##
+# The scheme component for this URI.
+#
+# @return [String] The scheme component.
+"
+Addressable::URI,normalized_scheme,"","",String,"    def normalized_scheme
+      return nil unless self.scheme
+      @normalized_scheme ||= begin
+        if self.scheme =~ /^\s*ssh\+svn\s*$/i
+          ""svn+ssh"".dup
+        else
+          Addressable::URI.normalize_component(
+            self.scheme.strip.downcase,
+            Addressable::URI::CharacterClasses::SCHEME
+          )
+        end
+      end
+      # All normalized values should be UTF-8
+      @normalized_scheme.force_encoding(Encoding::UTF_8) if @normalized_scheme
+      @normalized_scheme
+    end
+","##
+# The scheme component for this URI, normalized.
+#
+# @return [String] The scheme component, normalized.
+"
+Addressable::URI,scheme=,new_scheme,"new_scheme => String
+",nil,"    def scheme=(new_scheme)
+      if new_scheme && !new_scheme.respond_to?(:to_str)
+        raise TypeError, ""Can't convert #{new_scheme.class} into String.""
+      elsif new_scheme
+        new_scheme = new_scheme.to_str
+      end
+      if new_scheme && new_scheme !~ /\A[a-z][a-z0-9\.\+\-]*\z/i
+        raise InvalidURIError, ""Invalid scheme format: #{new_scheme}""
+      end
+      @scheme = new_scheme
+      @scheme = nil if @scheme.to_s.strip.empty?
+
+      # Reset dependent values
+      remove_instance_variable(:@normalized_scheme) if defined?(@normalized_scheme)
+      remove_composite_values
+
+      # Ensure we haven't created an invalid URI
+      validate()
+    end
+","##
+# Sets the scheme component for this URI.
+#
+# @param [String, #to_str] new_scheme The new scheme component.
+"
+Addressable::URI,user,"","",String,"    def user
+      return defined?(@user) ? @user : nil
+    end
+","##
+# The user component for this URI.
+#
+# @return [String] The user component.
+"
+Addressable::URI,normalized_user,"","",String,"    def normalized_user
+      return nil unless self.user
+      return @normalized_user if defined?(@normalized_user)
+      @normalized_user ||= begin
+        if normalized_scheme =~ /https?/ && self.user.strip.empty? &&
+            (!self.password || self.password.strip.empty?)
+          nil
+        else
+          Addressable::URI.normalize_component(
+            self.user.strip,
+            Addressable::URI::CharacterClasses::UNRESERVED
+          )
+        end
+      end
+      # All normalized values should be UTF-8
+      @normalized_user.force_encoding(Encoding::UTF_8) if @normalized_user
+      @normalized_user
+    end
+","##
+# The user component for this URI, normalized.
+#
+# @return [String] The user component, normalized.
+"
+Addressable::URI,user=,new_user,"new_user => String
+",nil,"    def user=(new_user)
+      if new_user && !new_user.respond_to?(:to_str)
+        raise TypeError, ""Can't convert #{new_user.class} into String.""
+      end
+      @user = new_user ? new_user.to_str : nil
+
+      # You can't have a nil user with a non-nil password
+      if password != nil
+        @user = EMPTY_STR if @user.nil?
+      end
+
+      # Reset dependent values
+      remove_instance_variable(:@userinfo) if defined?(@userinfo)
+      remove_instance_variable(:@normalized_userinfo) if defined?(@normalized_userinfo)
+      remove_instance_variable(:@authority) if defined?(@authority)
+      remove_instance_variable(:@normalized_user) if defined?(@normalized_user)
+      remove_composite_values
+
+      # Ensure we haven't created an invalid URI
+      validate()
+    end
+","##
+# Sets the user component for this URI.
+#
+# @param [String, #to_str] new_user The new user component.
+"
+Addressable::URI,password,"","",String,"    def password
+      return defined?(@password) ? @password : nil
+    end
+","##
+# The password component for this URI.
+#
+# @return [String] The password component.
+"
+Addressable::URI,normalized_password,"","",String,"    def normalized_password
+      return nil unless self.password
+      return @normalized_password if defined?(@normalized_password)
+      @normalized_password ||= begin
+        if self.normalized_scheme =~ /https?/ && self.password.strip.empty? &&
+            (!self.user || self.user.strip.empty?)
+          nil
+        else
+          Addressable::URI.normalize_component(
+            self.password.strip,
+            Addressable::URI::CharacterClasses::UNRESERVED
+          )
+        end
+      end
+      # All normalized values should be UTF-8
+      if @normalized_password
+        @normalized_password.force_encoding(Encoding::UTF_8)
+      end
+      @normalized_password
+    end
+","##
+# The password component for this URI, normalized.
+#
+# @return [String] The password component, normalized.
+"
+Addressable::URI,password=,new_password,"new_password => String
+",nil,"    def password=(new_password)
+      if new_password && !new_password.respond_to?(:to_str)
+        raise TypeError, ""Can't convert #{new_password.class} into String.""
+      end
+      @password = new_password ? new_password.to_str : nil
+
+      # You can't have a nil user with a non-nil password
+      @password ||= nil
+      @user ||= nil
+      if @password != nil
+        @user = EMPTY_STR if @user.nil?
+      end
+
+      # Reset dependent values
+      remove_instance_variable(:@userinfo) if defined?(@userinfo)
+      remove_instance_variable(:@normalized_userinfo) if defined?(@normalized_userinfo)
+      remove_instance_variable(:@authority) if defined?(@authority)
+      remove_instance_variable(:@normalized_password) if defined?(@normalized_password)
+      remove_composite_values
+
+      # Ensure we haven't created an invalid URI
+      validate()
+    end
+","##
+# Sets the password component for this URI.
+#
+# @param [String, #to_str] new_password The new password component.
+"
+Addressable::URI,userinfo,"","",String,"    def userinfo
+      current_user = self.user
+      current_password = self.password
+      (current_user || current_password) && @userinfo ||= begin
+        if current_user && current_password
+          ""#{current_user}:#{current_password}""
+        elsif current_user && !current_password
+          ""#{current_user}""
+        end
+      end
+    end
+","##
+# The userinfo component for this URI.
+# Combines the user and password components.
+#
+# @return [String] The userinfo component.
+"
+Addressable::URI,normalized_userinfo,"","",String,"    def normalized_userinfo
+      return nil unless self.userinfo
+      return @normalized_userinfo if defined?(@normalized_userinfo)
+      @normalized_userinfo ||= begin
+        current_user = self.normalized_user
+        current_password = self.normalized_password
+        if !current_user && !current_password
+          nil
+        elsif current_user && current_password
+          ""#{current_user}:#{current_password}"".dup
+        elsif current_user && !current_password
+          ""#{current_user}"".dup
+        end
+      end
+      # All normalized values should be UTF-8
+      if @normalized_userinfo
+        @normalized_userinfo.force_encoding(Encoding::UTF_8)
+      end
+      @normalized_userinfo
+    end
+","##
+# The userinfo component for this URI, normalized.
+#
+# @return [String] The userinfo component, normalized.
+"
+Addressable::URI,userinfo=,new_userinfo,"new_userinfo => String
+",nil,"    def userinfo=(new_userinfo)
+      if new_userinfo && !new_userinfo.respond_to?(:to_str)
+        raise TypeError, ""Can't convert #{new_userinfo.class} into String.""
+      end
+      new_user, new_password = if new_userinfo
+        [
+          new_userinfo.to_str.strip[/^(.*):/, 1],
+          new_userinfo.to_str.strip[/:(.*)$/, 1]
+        ]
+      else
+        [nil, nil]
+      end
+
+      # Password assigned first to ensure validity in case of nil
+      self.password = new_password
+      self.user = new_user
+
+      # Reset dependent values
+      remove_instance_variable(:@authority) if defined?(@authority)
+      remove_composite_values
+
+      # Ensure we haven't created an invalid URI
+      validate()
+    end
+","##
+# Sets the userinfo component for this URI.
+#
+# @param [String, #to_str] new_userinfo The new userinfo component.
+"
+Addressable::URI,host,"","",String,"    def host
+      return defined?(@host) ? @host : nil
+    end
+","##
+# The host component for this URI.
+#
+# @return [String] The host component.
+"
+Addressable::URI,normalized_host,"","",String,"    def normalized_host
+      return nil unless self.host
+      @normalized_host ||= begin
+        if !self.host.strip.empty?
+          result = ::Addressable::IDNA.to_ascii(
+            URI.unencode_component(self.host.strip.downcase)
+          )
+          if result =~ /[^\.]\.$/
+            # Single trailing dots are unnecessary.
+            result = result[0...-1]
+          end
+          result = Addressable::URI.normalize_component(
+            result,
+            CharacterClasses::HOST)
+          result
+        else
+          EMPTY_STR.dup
+        end
+      end
+      # All normalized values should be UTF-8
+      @normalized_host.force_encoding(Encoding::UTF_8) if @normalized_host
+      @normalized_host
+    end
+","##
+# The host component for this URI, normalized.
+#
+# @return [String] The host component, normalized.
+"
+Addressable::URI,host=,new_host,"new_host => String
+",nil,"    def host=(new_host)
+      if new_host && !new_host.respond_to?(:to_str)
+        raise TypeError, ""Can't convert #{new_host.class} into String.""
+      end
+      @host = new_host ? new_host.to_str : nil
+
+      # Reset dependent values
+      remove_instance_variable(:@authority) if defined?(@authority)
+      remove_instance_variable(:@normalized_host) if defined?(@normalized_host)
+      remove_composite_values
+
+      # Ensure we haven't created an invalid URI
+      validate()
+    end
+","##
+# Sets the host component for this URI.
+#
+# @param [String, #to_str] new_host The new host component.
+"
+Addressable::URI,hostname,"","",String,"    def hostname
+      v = self.host
+      /\A\[(.*)\]\z/ =~ v ? $1 : v
+    end
+","##
+# This method is same as URI::Generic#host except
+# brackets for IPv6 (and 'IPvFuture') addresses are removed.
+#
+# @see Addressable::URI#host
+#
+# @return [String] The hostname for this URI.
+"
+Addressable::URI,hostname=,new_hostname,"new_hostname => (IPAddr or String)
+",String,"    def hostname=(new_hostname)
+      if new_hostname &&
+          (new_hostname.respond_to?(:ipv4?) || new_hostname.respond_to?(:ipv6?))
+        new_hostname = new_hostname.to_s
+      elsif new_hostname && !new_hostname.respond_to?(:to_str)
+        raise TypeError, ""Can't convert #{new_hostname.class} into String.""
+      end
+      v = new_hostname ? new_hostname.to_str : nil
+      v = ""[#{v}]"" if /\A\[.*\]\z/ !~ v && /:/ =~ v
+      self.host = v
+    end
+","##
+# This method is same as URI::Generic#host= except
+# the argument can be a bare IPv6 address (or 'IPvFuture').
+#
+# @see Addressable::URI#host=
+#
+# @param [String, #to_str] new_hostname The new hostname for this URI.
+"
+Addressable::URI,tld,"","",String,"    def tld
+      PublicSuffix.parse(self.host, ignore_private: true).tld
+    end
+","##
+# Returns the top-level domain for this host.
+#
+# @example
+#   Addressable::URI.parse(""http://www.example.co.uk"").tld # => ""co.uk""
+"
+Addressable::URI,tld=,new_tld,"new_tld => String
+",String,"    def tld=(new_tld)
+      replaced_tld = host.sub(/#{tld}\z/, new_tld)
+      self.host = PublicSuffix::Domain.new(replaced_tld).to_s
+    end
+","##
+# Sets the top-level domain for this URI.
+#
+# @param [String, #to_str] new_tld The new top-level domain.
+"
+Addressable::URI,domain,"","",String,"    def domain
+      PublicSuffix.domain(self.host, ignore_private: true)
+    end
+","##
+# Returns the public suffix domain for this host.
+#
+# @example
+#   Addressable::URI.parse(""http://www.example.co.uk"").domain # => ""example.co.uk""
+"
+Addressable::URI,authority,"","",String,"    def authority
+      self.host && @authority ||= begin
+        authority = String.new
+        if self.userinfo != nil
+          authority << ""#{self.userinfo}@""
+        end
+        authority << self.host
+        if self.port != nil
+          authority << "":#{self.port}""
+        end
+        authority
+      end
+    end
+","##
+# The authority component for this URI.
+# Combines the user, password, host, and port components.
+#
+# @return [String] The authority component.
+"
+Addressable::URI,normalized_authority,"","",String,"    def normalized_authority
+      return nil unless self.authority
+      @normalized_authority ||= begin
+        authority = String.new
+        if self.normalized_userinfo != nil
+          authority << ""#{self.normalized_userinfo}@""
+        end
+        authority << self.normalized_host
+        if self.normalized_port != nil
+          authority << "":#{self.normalized_port}""
+        end
+        authority
+      end
+      # All normalized values should be UTF-8
+      if @normalized_authority
+        @normalized_authority.force_encoding(Encoding::UTF_8)
+      end
+      @normalized_authority
+    end
+","##
+# The authority component for this URI, normalized.
+#
+# @return [String] The authority component, normalized.
+"
+Addressable::URI,authority=,new_authority,"new_authority => String
+",nil,"    def authority=(new_authority)
+      if new_authority
+        if !new_authority.respond_to?(:to_str)
+          raise TypeError, ""Can't convert #{new_authority.class} into String.""
+        end
+        new_authority = new_authority.to_str
+        new_userinfo = new_authority[/^([^\[\]]*)@/, 1]
+        if new_userinfo
+          new_user = new_userinfo.strip[/^([^:]*):?/, 1]
+          new_password = new_userinfo.strip[/:(.*)$/, 1]
+        end
+        new_host = new_authority.sub(
+          /^([^\[\]]*)@/, EMPTY_STR
+        ).sub(
+          /:([^:@\[\]]*?)$/, EMPTY_STR
+        )
+        new_port =
+          new_authority[/:([^:@\[\]]*?)$/, 1]
+      end
+
+      # Password assigned first to ensure validity in case of nil
+      self.password = defined?(new_password) ? new_password : nil
+      self.user = defined?(new_user) ? new_user : nil
+      self.host = defined?(new_host) ? new_host : nil
+      self.port = defined?(new_port) ? new_port : nil
+
+      # Reset dependent values
+      remove_instance_variable(:@userinfo) if defined?(@userinfo)
+      remove_instance_variable(:@normalized_userinfo) if defined?(@normalized_userinfo)
+      remove_composite_values
+
+      # Ensure we haven't created an invalid URI
+      validate()
+    end
+","##
+# Sets the authority component for this URI.
+#
+# @param [String, #to_str] new_authority The new authority component.
+"
+Addressable::URI,origin,"","",String,"    def origin
+      if self.scheme && self.authority
+        if self.normalized_port
+          ""#{self.normalized_scheme}://#{self.normalized_host}"" +
+          "":#{self.normalized_port}""
+        else
+          ""#{self.normalized_scheme}://#{self.normalized_host}""
+        end
+      else
+        ""null""
+      end
+    end
+","##
+# The origin for this URI, serialized to ASCII, as per
+# RFC 6454, section 6.2.
+#
+# @return [String] The serialized origin.
+"
+Addressable::URI,origin=,new_origin,"new_origin => String
+",nil,"    def origin=(new_origin)
+      if new_origin
+        if !new_origin.respond_to?(:to_str)
+          raise TypeError, ""Can't convert #{new_origin.class} into String.""
+        end
+        new_origin = new_origin.to_str
+        new_scheme = new_origin[/^([^:\/?#]+):\/\//, 1]
+        unless new_scheme
+          raise InvalidURIError, 'An origin cannot omit the scheme.'
+        end
+        new_host = new_origin[/:\/\/([^\/?#:]+)/, 1]
+        unless new_host
+          raise InvalidURIError, 'An origin cannot omit the host.'
+        end
+        new_port = new_origin[/:([^:@\[\]\/]*?)$/, 1]
+      end
+
+      self.scheme = defined?(new_scheme) ? new_scheme : nil
+      self.host = defined?(new_host) ? new_host : nil
+      self.port = defined?(new_port) ? new_port : nil
+      self.userinfo = nil
+
+      # Reset dependent values
+      remove_instance_variable(:@userinfo) if defined?(@userinfo)
+      remove_instance_variable(:@normalized_userinfo) if defined?(@normalized_userinfo)
+      remove_instance_variable(:@authority) if defined?(@authority)
+      remove_instance_variable(:@normalized_authority) if defined?(@normalized_authority)
+      remove_composite_values
+
+      # Ensure we haven't created an invalid URI
+      validate()
+    end
+","##
+# Sets the origin for this URI, serialized to ASCII, as per
+# RFC 6454, section 6.2. This assignment will reset the `userinfo`
+# component.
+#
+# @param [String, #to_str] new_origin The new origin component.
+"
+Addressable::URI,port,"","",Integer,"    def port
+      return defined?(@port) ? @port : nil
+    end
+","##
+# The port component for this URI.
+# This is the port number actually given in the URI. This does not
+# infer port numbers from default values.
+#
+# @return [Integer] The port component.
+"
+Addressable::URI,normalized_port,"","",Integer,"    def normalized_port
+      return nil unless self.port
+      return @normalized_port if defined?(@normalized_port)
+      @normalized_port ||= begin
+        if URI.port_mapping[self.normalized_scheme] == self.port
+          nil
+        else
+          self.port
+        end
+      end
+    end
+","##
+# The port component for this URI, normalized.
+#
+# @return [Integer] The port component, normalized.
+"
+Addressable::URI,port=,new_port,"new_port => (Integer or String)
+",nil,"    def port=(new_port)
+      if new_port != nil && new_port.respond_to?(:to_str)
+        new_port = Addressable::URI.unencode_component(new_port.to_str)
+      end
+
+      if new_port.respond_to?(:valid_encoding?) && !new_port.valid_encoding?
+        raise InvalidURIError, ""Invalid encoding in port""
+      end
+
+      if new_port != nil && !(new_port.to_s =~ /^\d+$/)
+        raise InvalidURIError,
+          ""Invalid port number: #{new_port.inspect}""
+      end
+
+      @port = new_port.to_s.to_i
+      @port = nil if @port == 0
+
+      # Reset dependent values
+      remove_instance_variable(:@authority) if defined?(@authority)
+      remove_instance_variable(:@normalized_port) if defined?(@normalized_port)
+      remove_composite_values
+
+      # Ensure we haven't created an invalid URI
+      validate()
+    end
+","##
+# Sets the port component for this URI.
+#
+# @param [String, Integer, #to_s] new_port The new port component.
+"
+Addressable::URI,inferred_port,"","",Integer,"    def inferred_port
+      if self.port.to_i == 0
+        self.default_port
+      else
+        self.port.to_i
+      end
+    end
+","##
+# The inferred port component for this URI.
+# This method will normalize to the default port for the URI's scheme if
+# the port isn't explicitly specified in the URI.
+#
+# @return [Integer] The inferred port component.
+"
+Addressable::URI,default_port,"","",Integer,"    def default_port
+      URI.port_mapping[self.scheme.strip.downcase] if self.scheme
+    end
+","##
+# The default port for this URI's scheme.
+# This method will always returns the default port for the URI's scheme
+# regardless of the presence of an explicit port in the URI.
+#
+# @return [Integer] The default port.
+"
+Addressable::URI,site,"","",String,"    def site
+      (self.scheme || self.authority) && @site ||= begin
+        site_string = """".dup
+        site_string << ""#{self.scheme}:"" if self.scheme != nil
+        site_string << ""//#{self.authority}"" if self.authority != nil
+        site_string
+      end
+    end
+","##
+# The combination of components that represent a site.
+# Combines the scheme, user, password, host, and port components.
+# Primarily useful for HTTP and HTTPS.
+#
+# For example, <code>""http://example.com/path?query""</code> would have a
+# <code>site</code> value of <code>""http://example.com""</code>.
+#
+# @return [String] The components that identify a site.
+"
+Addressable::URI,normalized_site,"","",String,"    def normalized_site
+      return nil unless self.site
+      @normalized_site ||= begin
+        site_string = """".dup
+        if self.normalized_scheme != nil
+          site_string << ""#{self.normalized_scheme}:""
+        end
+        if self.normalized_authority != nil
+          site_string << ""//#{self.normalized_authority}""
+        end
+        site_string
+      end
+      # All normalized values should be UTF-8
+      @normalized_site.force_encoding(Encoding::UTF_8) if @normalized_site
+      @normalized_site
+    end
+","##
+# The normalized combination of components that represent a site.
+# Combines the scheme, user, password, host, and port components.
+# Primarily useful for HTTP and HTTPS.
+#
+# For example, <code>""http://example.com/path?query""</code> would have a
+# <code>site</code> value of <code>""http://example.com""</code>.
+#
+# @return [String] The normalized components that identify a site.
+"
+Addressable::URI,site=,new_site,"new_site => String
+",String,"    def site=(new_site)
+      if new_site
+        if !new_site.respond_to?(:to_str)
+          raise TypeError, ""Can't convert #{new_site.class} into String.""
+        end
+        new_site = new_site.to_str
+        # These two regular expressions derived from the primary parsing
+        # expression
+        self.scheme = new_site[/^(?:([^:\/?#]+):)?(?:\/\/(?:[^\/?#]*))?$/, 1]
+        self.authority = new_site[
+          /^(?:(?:[^:\/?#]+):)?(?:\/\/([^\/?#]*))?$/, 1
+        ]
+      else
+        self.scheme = nil
+        self.authority = nil
+      end
+    end
+","##
+# Sets the site value for this URI.
+#
+# @param [String, #to_str] new_site The new site value.
+"
+Addressable::URI,path,"","",String,"    def path
+      return defined?(@path) ? @path : EMPTY_STR
+    end
+","##
+# The path component for this URI.
+#
+# @return [String] The path component.
+"
+Addressable::URI,normalized_path,"","",String,"    def normalized_path
+      @normalized_path ||= begin
+        path = self.path.to_s
+        if self.scheme == nil && path =~ NORMPATH
+          # Relative paths with colons in the first segment are ambiguous.
+          path = path.sub("":"", ""%2F"")
+        end
+        # String#split(delimeter, -1) uses the more strict splitting behavior
+        # found by default in Python.
+        result = path.strip.split(SLASH, -1).map do |segment|
+          Addressable::URI.normalize_component(
+            segment,
+            Addressable::URI::CharacterClasses::PCHAR
+          )
+        end.join(SLASH)
+
+        result = URI.normalize_path(result)
+        if result.empty? &&
+            [""http"", ""https"", ""ftp"", ""tftp""].include?(self.normalized_scheme)
+          result = SLASH.dup
+        end
+        result
+      end
+      # All normalized values should be UTF-8
+      @normalized_path.force_encoding(Encoding::UTF_8) if @normalized_path
+      @normalized_path
+    end
+","##
+# The path component for this URI, normalized.
+#
+# @return [String] The path component, normalized.
+"
+Addressable::URI,path=,new_path,"new_path => String
+",nil,"    def path=(new_path)
+      if new_path && !new_path.respond_to?(:to_str)
+        raise TypeError, ""Can't convert #{new_path.class} into String.""
+      end
+      @path = (new_path || EMPTY_STR).to_str
+      if !@path.empty? && @path[0..0] != SLASH && host != nil
+        @path = ""/#{@path}""
+      end
+
+      # Reset dependent values
+      remove_instance_variable(:@normalized_path) if defined?(@normalized_path)
+      remove_composite_values
+
+      # Ensure we haven't created an invalid URI
+      validate()
+    end
+","##
+# Sets the path component for this URI.
+#
+# @param [String, #to_str] new_path The new path component.
+"
+Addressable::URI,basename,"","",String,"    def basename
+      # Path cannot be nil
+      return File.basename(self.path).sub(/;[^\/]*$/, EMPTY_STR)
+    end
+","##
+# The basename, if any, of the file in the path component.
+#
+# @return [String] The path's basename.
+"
+Addressable::URI,extname,"","",String,"    def extname
+      return nil unless self.path
+      return File.extname(self.basename)
+    end
+","##
+# The extname, if any, of the file in the path component.
+# Empty string if there is no extension.
+#
+# @return [String] The path's extname.
+"
+Addressable::URI,query,"","",String,"    def query
+      return defined?(@query) ? @query : nil
+    end
+","##
+# The query component for this URI.
+#
+# @return [String] The query component.
+"
+Addressable::URI,normalized_query,flags,"flags => (Array<%bot> or Array<RDL::Type::NominalType>)
+",String,"    def normalized_query(*flags)
+      return nil unless self.query
+      return @normalized_query if defined?(@normalized_query)
+      @normalized_query ||= begin
+        modified_query_class = Addressable::URI::CharacterClasses::QUERY.dup
+        # Make sure possible key-value pair delimiters are escaped.
+        modified_query_class.sub!(""\\&"", """").sub!(""\\;"", """")
+        pairs = (self.query || """").split(""&"", -1)
+        pairs.delete_if(&:empty?) if flags.include?(:compacted)
+        pairs.sort! if flags.include?(:sorted)
+        component = pairs.map do |pair|
+          Addressable::URI.normalize_component(pair, modified_query_class, ""+"")
+        end.join(""&"")
+        component == """" ? nil : component
+      end
+      # All normalized values should be UTF-8
+      @normalized_query.force_encoding(Encoding::UTF_8) if @normalized_query
+      @normalized_query
+    end
+","##
+# The query component for this URI, normalized.
+#
+# @return [String] The query component, normalized.
+"
+Addressable::URI,query=,new_query,"new_query => String
+",nil,"    def query=(new_query)
+      if new_query && !new_query.respond_to?(:to_str)
+        raise TypeError, ""Can't convert #{new_query.class} into String.""
+      end
+      @query = new_query ? new_query.to_str : nil
+
+      # Reset dependent values
+      remove_instance_variable(:@normalized_query) if defined?(@normalized_query)
+      remove_composite_values
+    end
+","##
+# Sets the query component for this URI.
+#
+# @param [String, #to_str] new_query The new query component.
+"
+Addressable::URI,query_values,return_type,"return_type => Class
+","(Array<%bot> or Array<Array<String>> or Hash<%bot, %bot> or Hash<String, String> or Hash<String, nil>)","    def query_values(return_type=Hash)
+      empty_accumulator = Array == return_type ? [] : {}
+      if return_type != Hash && return_type != Array
+        raise ArgumentError, ""Invalid return type. Must be Hash or Array.""
+      end
+      return nil if self.query == nil
+      split_query = self.query.split(""&"").map do |pair|
+        pair.split(""="", 2) if pair && !pair.empty?
+      end.compact
+      return split_query.inject(empty_accumulator.dup) do |accu, pair|
+        # I'd rather use key/value identifiers instead of array lookups,
+        # but in this case I really want to maintain the exact pair structure,
+        # so it's best to make all changes in-place.
+        pair[0] = URI.unencode_component(pair[0])
+        if pair[1].respond_to?(:to_str)
+          # I loathe the fact that I have to do this. Stupid HTML 4.01.
+          # Treating '+' as a space was just an unbelievably bad idea.
+          # There was nothing wrong with '%20'!
+          # If it ain't broke, don't fix it!
+          pair[1] = URI.unencode_component(pair[1].to_str.tr(""+"", "" ""))
+        end
+        if return_type == Hash
+          accu[pair[0]] = pair[1]
+        else
+          accu << pair
+        end
+        accu
+      end
+    end
+","##
+# Converts the query component to a Hash value.
+#
+# @param [Class] return_type The return type desired. Value must be either
+#   `Hash` or `Array`.
+#
+# @return [Hash, Array, nil] The query string parsed as a Hash or Array
+#   or nil if the query string is blank.
+#
+# @example
+#   Addressable::URI.parse(""?one=1&two=2&three=3"").query_values
+#   #=> {""one"" => ""1"", ""two"" => ""2"", ""three"" => ""3""}
+#   Addressable::URI.parse(""?one=two&one=three"").query_values(Array)
+#   #=> [[""one"", ""two""], [""one"", ""three""]]
+#   Addressable::URI.parse(""?one=two&one=three"").query_values(Hash)
+#   #=> {""one"" => ""three""}
+#   Addressable::URI.parse(""?"").query_values
+#   #=> {}
+#   Addressable::URI.parse("""").query_values
+#   #=> nil
+"
+Addressable::URI,query_values=,new_query_values,"new_query_values => (Array<Array<String>> or Hash<%bot, %bot> or Hash<(String or Symbol), String> or Hash<String, String> or Hash<String, nil> or Hash<Symbol, (Array<String> or String)> or Hash<Symbol, (Float or Integer)>)
+",String,"    def query_values=(new_query_values)
+      if new_query_values == nil
+        self.query = nil
+        return nil
+      end
+
+      if !new_query_values.is_a?(Array)
+        if !new_query_values.respond_to?(:to_hash)
+          raise TypeError,
+            ""Can't convert #{new_query_values.class} into Hash.""
+        end
+        new_query_values = new_query_values.to_hash
+        new_query_values = new_query_values.map do |key, value|
+          key = key.to_s if key.kind_of?(Symbol)
+          [key, value]
+        end
+        # Useful default for OAuth and caching.
+        # Only to be used for non-Array inputs. Arrays should preserve order.
+        new_query_values.sort!
+      end
+
+      # new_query_values have form [['key1', 'value1'], ['key2', 'value2']]
+      buffer = """".dup
+      new_query_values.each do |key, value|
+        encoded_key = URI.encode_component(
+          key, CharacterClasses::UNRESERVED
+        )
+        if value == nil
+          buffer << ""#{encoded_key}&""
+        elsif value.kind_of?(Array)
+          value.each do |sub_value|
+            encoded_value = URI.encode_component(
+              sub_value, CharacterClasses::UNRESERVED
+            )
+            buffer << ""#{encoded_key}=#{encoded_value}&""
+          end
+        else
+          encoded_value = URI.encode_component(
+            value, CharacterClasses::UNRESERVED
+          )
+          buffer << ""#{encoded_key}=#{encoded_value}&""
+        end
+      end
+      self.query = buffer.chop
+    end
+","##
+# Sets the query component for this URI from a Hash object.
+# An empty Hash or Array will result in an empty query string.
+#
+# @param [Hash, #to_hash, Array] new_query_values The new query values.
+#
+# @example
+#   uri.query_values = {:a => ""a"", :b => [""c"", ""d"", ""e""]}
+#   uri.query
+#   # => ""a=a&b=c&b=d&b=e""
+#   uri.query_values = [['a', 'a'], ['b', 'c'], ['b', 'd'], ['b', 'e']]
+#   uri.query
+#   # => ""a=a&b=c&b=d&b=e""
+#   uri.query_values = [['a', 'a'], ['b', ['c', 'd', 'e']]]
+#   uri.query
+#   # => ""a=a&b=c&b=d&b=e""
+#   uri.query_values = [['flag'], ['key', 'value']]
+#   uri.query
+#   # => ""flag&key=value""
+"
+Addressable::URI,request_uri,"","",String,"    def request_uri
+      return nil if self.absolute? && self.scheme !~ /^https?$/i
+      return (
+        (!self.path.empty? ? self.path : SLASH) +
+        (self.query ? ""?#{self.query}"" : EMPTY_STR)
+      )
+    end
+","##
+# The HTTP request URI for this URI.  This is the path and the
+# query string.
+#
+# @return [String] The request URI required for an HTTP request.
+"
+Addressable::URI,request_uri=,new_request_uri,"new_request_uri => String
+",nil,"    def request_uri=(new_request_uri)
+      if !new_request_uri.respond_to?(:to_str)
+        raise TypeError, ""Can't convert #{new_request_uri.class} into String.""
+      end
+      if self.absolute? && self.scheme !~ /^https?$/i
+        raise InvalidURIError,
+          ""Cannot set an HTTP request URI for a non-HTTP URI.""
+      end
+      new_request_uri = new_request_uri.to_str
+      path_component = new_request_uri[/^([^\?]*)\??(?:.*)$/, 1]
+      query_component = new_request_uri[/^(?:[^\?]*)\?(.*)$/, 1]
+      path_component = path_component.to_s
+      path_component = (!path_component.empty? ? path_component : SLASH)
+      self.path = path_component
+      self.query = query_component
+
+      # Reset dependent values
+      remove_composite_values
+    end
+","##
+# Sets the HTTP request URI for this URI.
+#
+# @param [String, #to_str] new_request_uri The new HTTP request URI.
+"
+Addressable::URI,fragment,"","",String,"    def fragment
+      return defined?(@fragment) ? @fragment : nil
+    end
+","##
+# The fragment component for this URI.
+#
+# @return [String] The fragment component.
+"
+Addressable::URI,normalized_fragment,"","",String,"    def normalized_fragment
+      return nil unless self.fragment
+      return @normalized_fragment if defined?(@normalized_fragment)
+      @normalized_fragment ||= begin
+        component = Addressable::URI.normalize_component(
+          self.fragment,
+          Addressable::URI::CharacterClasses::FRAGMENT
+        )
+        component == """" ? nil : component
+      end
+      # All normalized values should be UTF-8
+      if @normalized_fragment
+        @normalized_fragment.force_encoding(Encoding::UTF_8)
+      end
+      @normalized_fragment
+    end
+","##
+# The fragment component for this URI, normalized.
+#
+# @return [String] The fragment component, normalized.
+"
+Addressable::URI,fragment=,new_fragment,"new_fragment => String
+",nil,"    def fragment=(new_fragment)
+      if new_fragment && !new_fragment.respond_to?(:to_str)
+        raise TypeError, ""Can't convert #{new_fragment.class} into String.""
+      end
+      @fragment = new_fragment ? new_fragment.to_str : nil
+
+      # Reset dependent values
+      remove_instance_variable(:@normalized_fragment) if defined?(@normalized_fragment)
+      remove_composite_values
+
+      # Ensure we haven't created an invalid URI
+      validate()
+    end
+","##
+# Sets the fragment component for this URI.
+#
+# @param [String, #to_str] new_fragment The new fragment component.
+"
+Addressable::URI,ip_based?,"","",(false or true),"    def ip_based?
+      if self.scheme
+        return URI.ip_based_schemes.include?(
+          self.scheme.strip.downcase)
+      end
+      return false
+    end
+","##
+# Determines if the scheme indicates an IP-based protocol.
+#
+# @return [TrueClass, FalseClass]
+#   <code>true</code> if the scheme indicates an IP-based protocol.
+#   <code>false</code> otherwise.
+"
+Addressable::URI,relative?,"","",(false or true),"    def relative?
+      return self.scheme.nil?
+    end
+","##
+# Determines if the URI is relative.
+#
+# @return [TrueClass, FalseClass]
+#   <code>true</code> if the URI is relative. <code>false</code>
+#   otherwise.
+"
+Addressable::URI,absolute?,"","",(false or true),"    def absolute?
+      return !relative?
+    end
+","##
+# Determines if the URI is absolute.
+#
+# @return [TrueClass, FalseClass]
+#   <code>true</code> if the URI is absolute. <code>false</code>
+#   otherwise.
+"
+Addressable::URI,join!,uri,"uri => Addressable::URI
+",Addressable::URI,"    def join!(uri)
+      replace_self(self.join(uri))
+    end
+","##
+# Destructive form of <code>join</code>.
+#
+# @param [String, Addressable::URI, #to_str] The URI to join with.
+#
+# @return [Addressable::URI] The joined URI.
+#
+# @see Addressable::URI#join
+"
+Addressable::URI,merge!,uri,"uri => Hash<Symbol, String>
+",Addressable::URI,"    def merge!(uri)
+      replace_self(self.merge(uri))
+    end
+","##
+# Destructive form of <code>merge</code>.
+#
+# @param [Hash, Addressable::URI, #to_hash] The components to merge with.
+#
+# @return [Addressable::URI] The merged URI.
+#
+# @see Addressable::URI#merge
+"
+Addressable::URI,route_from,uri,"uri => (Addressable::URI or String)
+",Addressable::URI,"    def route_from(uri)
+      uri = URI.parse(uri).normalize
+      normalized_self = self.normalize
+      if normalized_self.relative?
+        raise ArgumentError, ""Expected absolute URI, got: #{self.to_s}""
+      end
+      if uri.relative?
+        raise ArgumentError, ""Expected absolute URI, got: #{uri.to_s}""
+      end
+      if normalized_self == uri
+        return Addressable::URI.parse(""##{normalized_self.fragment}"")
+      end
+      components = normalized_self.to_hash
+      if normalized_self.scheme == uri.scheme
+        components[:scheme] = nil
+        if normalized_self.authority == uri.authority
+          components[:user] = nil
+          components[:password] = nil
+          components[:host] = nil
+          components[:port] = nil
+          if normalized_self.path == uri.path
+            components[:path] = nil
+            if normalized_self.query == uri.query
+              components[:query] = nil
+            end
+          else
+            if uri.path != SLASH and components[:path]
+              self_splitted_path = split_path(components[:path])
+              uri_splitted_path = split_path(uri.path)
+              self_dir = self_splitted_path.shift
+              uri_dir = uri_splitted_path.shift
+              while !self_splitted_path.empty? && !uri_splitted_path.empty? and self_dir == uri_dir
+                self_dir = self_splitted_path.shift
+                uri_dir = uri_splitted_path.shift
+              end
+              components[:path] = (uri_splitted_path.fill('..') + [self_dir] + self_splitted_path).join(SLASH)
+            end
+          end
+        end
+      end
+      # Avoid network-path references.
+      if components[:host] != nil
+        components[:scheme] = normalized_self.scheme
+      end
+      return Addressable::URI.new(
+        :scheme => components[:scheme],
+        :user => components[:user],
+        :password => components[:password],
+        :host => components[:host],
+        :port => components[:port],
+        :path => components[:path],
+        :query => components[:query],
+        :fragment => components[:fragment]
+      )
+    end
+","##
+# Returns the shortest normalized relative form of this URI that uses the
+# supplied URI as a base for resolution. Returns an absolute URI if
+# necessary. This is effectively the opposite of <code>route_to</code>.
+#
+# @param [String, Addressable::URI, #to_str] uri The URI to route from.
+#
+# @return [Addressable::URI]
+#   The normalized relative URI that is equivalent to the original URI.
+"
+Addressable::URI,route_to,uri,"uri => String
+",Addressable::URI,"    def route_to(uri)
+      return URI.parse(uri).route_from(self)
+    end
+","##
+# Returns the shortest normalized relative form of the supplied URI that
+# uses this URI as a base for resolution. Returns an absolute URI if
+# necessary. This is effectively the opposite of <code>route_from</code>.
+#
+# @param [String, Addressable::URI, #to_str] uri The URI to route to.
+#
+# @return [Addressable::URI]
+#   The normalized relative URI that is equivalent to the supplied URI.
+"
+Addressable::URI,normalize!,"","",Addressable::URI,"    def normalize!
+      replace_self(self.normalize)
+    end
+","##
+# Destructively normalizes this URI object.
+#
+# @return [Addressable::URI] The normalized URI.
+#
+# @see Addressable::URI#normalize
+"
+Addressable::URI,display_uri,"","",Addressable::URI,"    def display_uri
+      display_uri = self.normalize
+      display_uri.host = ::Addressable::IDNA.to_unicode(display_uri.host)
+      return display_uri
+    end
+","##
+# Creates a URI suitable for display to users. If semantic attacks are
+# likely, the application should try to detect these and warn the user.
+# See <a href=""http://www.ietf.org/rfc/rfc3986.txt"">RFC 3986</a>,
+# section 7.6 for more information.
+#
+# @return [Addressable::URI] A URI suitable for display purposes.
+"
+Addressable::URI,===,uri,"uri => (Addressable::URI or Integer or String)
+",(false or true),"    def ===(uri)
+      if uri.respond_to?(:normalize)
+        uri_string = uri.normalize.to_s
+      else
+        begin
+          uri_string = ::Addressable::URI.parse(uri).normalize.to_s
+        rescue InvalidURIError, TypeError
+          return false
+        end
+      end
+      return self.normalize.to_s == uri_string
+    end
+","##
+# Returns <code>true</code> if the URI objects are equal. This method
+# normalizes both URIs before doing the comparison, and allows comparison
+# against <code>Strings</code>.
+#
+# @param [Object] uri The URI to compare.
+#
+# @return [TrueClass, FalseClass]
+#   <code>true</code> if the URIs are equivalent, <code>false</code>
+#   otherwise.
+"
+Addressable::URI,==,uri,"uri => (Addressable::Template or Addressable::URI or Integer)
+",(false or true),"    def ==(uri)
+      return false unless uri.kind_of?(URI)
+      return self.normalize.to_s == uri.normalize.to_s
+    end
+","##
+# Returns <code>true</code> if the URI objects are equal. This method
+# normalizes both URIs before doing the comparison.
+#
+# @param [Object] uri The URI to compare.
+#
+# @return [TrueClass, FalseClass]
+#   <code>true</code> if the URIs are equivalent, <code>false</code>
+#   otherwise.
+"
+Addressable::URI,eql?,uri,"uri => (Addressable::Template or Addressable::URI or Integer)
+",(false or true),"    def eql?(uri)
+      return false unless uri.kind_of?(URI)
+      return self.to_s == uri.to_s
+    end
+","##
+# Returns <code>true</code> if the URI objects are equal. This method
+# does NOT normalize either URI before doing the comparison.
+#
+# @param [Object] uri The URI to compare.
+#
+# @return [TrueClass, FalseClass]
+#   <code>true</code> if the URIs are equivalent, <code>false</code>
+#   otherwise.
+"
+Addressable::URI,hash,"","",Integer,"    def hash
+      @hash ||= self.to_s.hash * -1
+    end
+","##
+# A hash value that will make a URI equivalent to its normalized
+# form.
+#
+# @return [Integer] A hash of the URI.
+"
+Addressable::URI,omit,components,"components => Array<RDL::Type::NominalType>
+",Addressable::URI,"    def omit(*components)
+      invalid_components = components - [
+        :scheme, :user, :password, :userinfo, :host, :port, :authority,
+        :path, :query, :fragment
+      ]
+      unless invalid_components.empty?
+        raise ArgumentError,
+          ""Invalid component names: #{invalid_components.inspect}.""
+      end
+      duplicated_uri = self.dup
+      duplicated_uri.defer_validation do
+        components.each do |component|
+          duplicated_uri.send((component.to_s + ""="").to_sym, nil)
+        end
+        duplicated_uri.user = duplicated_uri.normalized_user
+      end
+      duplicated_uri
+    end
+","##
+# Omits components from a URI.
+#
+# @param [Symbol] *components The components to be omitted.
+#
+# @return [Addressable::URI] The URI with components omitted.
+#
+# @example
+#   uri = Addressable::URI.parse(""http://example.com/path?query"")
+#   #=> #<Addressable::URI:0xcc5e7a URI:http://example.com/path?query>
+#   uri.omit(:scheme, :authority)
+#   #=> #<Addressable::URI:0xcc4d86 URI:/path?query>
+"
+Addressable::URI,omit!,components,"components => Array<RDL::Type::NominalType>
+",Addressable::URI,"    def omit!(*components)
+      replace_self(self.omit(*components))
+    end
+","##
+# Destructive form of omit.
+#
+# @param [Symbol] *components The components to be omitted.
+#
+# @return [Addressable::URI] The URI with components omitted.
+#
+# @see Addressable::URI#omit
+"
+Addressable::URI,empty?,"","",(false or true),"    def empty?
+      return self.to_s.empty?
+    end
+","##
+# Determines if the URI is an empty string.
+#
+# @return [TrueClass, FalseClass]
+#   Returns <code>true</code> if empty, <code>false</code> otherwise.
+"
+Addressable::URI,to_s,"","",String,"    def to_s
+      if self.scheme == nil && self.path != nil && !self.path.empty? &&
+          self.path =~ NORMPATH
+        raise InvalidURIError,
+          ""Cannot assemble URI string with ambiguous path: '#{self.path}'""
+      end
+      @uri_string ||= begin
+        uri_string = String.new
+        uri_string << ""#{self.scheme}:"" if self.scheme != nil
+        uri_string << ""//#{self.authority}"" if self.authority != nil
+        uri_string << self.path.to_s
+        uri_string << ""?#{self.query}"" if self.query != nil
+        uri_string << ""##{self.fragment}"" if self.fragment != nil
+        uri_string.force_encoding(Encoding::UTF_8)
+        uri_string
+      end
+    end
+","##
+# Converts the URI to a <code>String</code>.
+#
+# @return [String] The URI's <code>String</code> representation.
+"
+Addressable::URI,to_hash,"","","(Hash<Symbol, (Integer or String)> or Hash<Symbol, String>)","    def to_hash
+      return {
+        :scheme => self.scheme,
+        :user => self.user,
+        :password => self.password,
+        :host => self.host,
+        :port => self.port,
+        :path => self.path,
+        :query => self.query,
+        :fragment => self.fragment
+      }
+    end
+","##
+# Returns a Hash of the URI components.
+#
+# @return [Hash] The URI as a <code>Hash</code> of components.
+"
+Addressable::URI,inspect,"","",String,"    def inspect
+      sprintf(""#<%s:%#0x URI:%s>"", URI.to_s, self.object_id, self.to_s)
+    end
+","##
+# Returns a <code>String</code> representation of the URI object's state.
+#
+# @return [String] The URI object's state, as a <code>String</code>.
+"
+Addressable::URI,defer_validation,"","",nil,"    def defer_validation
+      raise LocalJumpError, ""No block given."" unless block_given?
+      @validation_deferred = true
+      yield
+      @validation_deferred = false
+      validate
+      return nil
+    end
+","##
+# This method allows you to make several changes to a URI simultaneously,
+# which separately would cause validation errors, but in conjunction,
+# are valid.  The URI will be revalidated as soon as the entire block has
+# been executed.
+#
+# @param [Proc] block
+#   A set of operations to perform on a given URI.
+"
+Addressable::URI,validate,"","",nil,"    def validate
+      return if !!@validation_deferred
+      if self.scheme != nil && self.ip_based? &&
+          (self.host == nil || self.host.empty?) &&
+          (self.path == nil || self.path.empty?)
+        raise InvalidURIError,
+          ""Absolute URI missing hierarchical segment: '#{self.to_s}'""
+      end
+      if self.host == nil
+        if self.port != nil ||
+            self.user != nil ||
+            self.password != nil
+          raise InvalidURIError, ""Hostname not supplied: '#{self.to_s}'""
+        end
+      end
+      if self.path != nil && !self.path.empty? && self.path[0..0] != SLASH &&
+          self.authority != nil
+        raise InvalidURIError,
+          ""Cannot have a relative path with an authority set: '#{self.to_s}'""
+      end
+      if self.path != nil && !self.path.empty? &&
+          self.path[0..1] == SLASH + SLASH && self.authority == nil
+        raise InvalidURIError,
+          ""Cannot have a path with two leading slashes "" +
+          ""without an authority set: '#{self.to_s}'""
+      end
+      unreserved = CharacterClasses::UNRESERVED
+      sub_delims = CharacterClasses::SUB_DELIMS
+      if !self.host.nil? && (self.host =~ /[<>{}\/\\\?\#\@""[[:space:]]]/ ||
+          (self.host[/^\[(.*)\]$/, 1] != nil && self.host[/^\[(.*)\]$/, 1] !~
+          Regexp.new(""^[#{unreserved}#{sub_delims}:]*$"")))
+        raise InvalidURIError, ""Invalid character in host: '#{self.host.to_s}'""
+      end
+      return nil
+    end
+","##
+# Ensures that the URI is valid.
+"
+Addressable::URI,replace_self,uri,"uri => Addressable::URI
+",Addressable::URI,"    def replace_self(uri)
+      # Reset dependent values
+      instance_variables.each do |var|
+        if instance_variable_defined?(var) && var != :@validation_deferred
+          remove_instance_variable(var)
+        end
+      end
+
+      @scheme = uri.scheme
+      @user = uri.user
+      @password = uri.password
+      @host = uri.host
+      @port = uri.port
+      @path = uri.path
+      @query = uri.query
+      @fragment = uri.fragment
+      return self
+    end
+","##
+# Replaces the internal state of self with the specified URI's state.
+# Used in destructive operations to avoid massive code repetition.
+#
+# @param [Addressable::URI] uri The URI to replace <code>self</code> with.
+#
+# @return [Addressable::URI] <code>self</code>.
+"
+Addressable::URI,split_path,path,"path => String
+",Array<String>,"    def split_path(path)
+      splitted = path.split(SLASH)
+      splitted << EMPTY_STR if path.end_with? SLASH
+      splitted
+    end
+","##
+# Splits path string with ""/"" (slash).
+# It is considered that there is empty string after last slash when
+# path ends with slash.
+#
+# @param [String] path The path to split.
+#
+# @return [Array<String>] An array of parts of path.
+"
+Addressable::URI,remove_composite_values,"","",nil,"    def remove_composite_values
+      remove_instance_variable(:@uri_string) if defined?(@uri_string)
+      remove_instance_variable(:@hash) if defined?(@hash)
+    end
+","##
+# Resets composite values for the entire URI
+#
+# @api private
+"
+Addressable::Template::MatchData,initialize,"uri, template, mapping","uri => Addressable::URI
+template => Addressable::Template
+mapping => (Hash<%bot, %bot> or Hash<String, (Array<String> or String)> or Hash<String, (Hash<String, String> or String)> or Hash<String, Hash<String, String>> or Hash<String, String> or Hash<String, nil>)
+","(Hash<%bot, %bot> or Hash<String, (Array<String> or String)> or Hash<String, (Hash<String, String> or String)> or Hash<String, Hash<String, String>> or Hash<String, String> or Hash<String, nil>)","      def initialize(uri, template, mapping)
+        @uri = uri.dup.freeze
+        @template = template
+        @mapping = mapping.dup.freeze
+      end
+","##
+# Creates a new MatchData object.
+# MatchData objects should never be instantiated directly.
+#
+# @param [Addressable::URI] uri
+#   The URI that the template was matched against.
+"
+Addressable::Template::MatchData,variables,"","",Array<String>,"      def variables
+        self.template.variables
+      end
+","##
+# @return [Array]
+#   The list of variables that were present in the Template.
+#   Note that this list will include variables which do not appear
+#   in the mapping because they were not present in URI.
+"
+Addressable::Template::MatchData,values,"","","(Array<(Array<String> or String)> or Array<Hash<String, String>> or Array<String>)","      def values
+        @values ||= self.variables.inject([]) do |accu, key|
+          accu << self.mapping[key]
+          accu
+        end
+      end
+","##
+# @return [Array]
+#   The list of values that were captured by the Template.
+#   Note that this list will include nils for any variables which
+#   were in the Template, but did not appear in the URI.
+"
+Addressable::Template::MatchData,[],"key, len","key => (Integer or String or Symbol)
+len => Integer
+",(Array<String> or String),"      def [](key, len = nil)
+        if len
+          to_a[key, len]
+        elsif String === key or Symbol === key
+          mapping[key.to_s]
+        else
+          to_a[key]
+        end
+      end
+","##
+# Accesses captured values by name or by index.
+#
+# @param [String, Symbol, Fixnum] key
+#   Capture index or name. Note that when accessing by with index
+#   of 0, the full URI will be returned. The intention is to mimic
+#   the ::MatchData#[] behavior.
+#
+# @param [#to_int, nil] len
+#   If provided, an array of values will be returend with the given
+#   parameter used as length.
+#
+# @return [Array, String, nil]
+#   The captured value corresponding to the index or name. If the
+#   value was not provided or the key is unknown, nil will be
+#   returned.
+#
+#   If the second parameter is provided, an array of that length will
+#   be returned instead.
+"
+Addressable::Template::MatchData,to_a,"","",Array<String>,"      def to_a
+        [to_s, *values]
+      end
+","##
+# @return [Array]
+#   Array with the matched URI as first element followed by the captured
+#   values.
+"
+Addressable::Template::MatchData,to_s,"","",String,"      def to_s
+        uri.to_s
+      end
+","##
+# @return [String]
+#   The matched URI as String.
+"
+Addressable::Template::MatchData,values_at,indexes,"indexes => Array<RDL::Type::NominalType>
+",Array<String>,"      def values_at(*indexes)
+        indexes.map { |i| self[i] }
+      end
+","# Returns multiple captured values at once.
+#
+# @param [String, Symbol, Fixnum] *indexes
+#   Indices of the captures to be returned
+#
+# @return [Array]
+#   Values corresponding to given indices.
+#
+# @see Addressable::Template::MatchData#[]
+"
+Addressable::Template::MatchData,inspect,"","",String,"      def inspect
+        sprintf(""#<%s:%#0x RESULT:%s>"",
+          self.class.to_s, self.object_id, self.mapping.inspect)
+      end
+","##
+# Returns a <tt>String</tt> representation of the MatchData's state.
+#
+# @return [String] The MatchData's state, as a <tt>String</tt>.
+"
+Addressable::Template::MatchData,pre_match,"","",String,"      def pre_match
+        """"
+      end
+","##
+# Dummy method for code expecting a ::MatchData instance
+#
+# @return [String] An empty string.
+"
+Addressable::Template,initialize,pattern,"pattern => String
+",String,"    def initialize(pattern)
+      if !pattern.respond_to?(:to_str)
+        raise TypeError, ""Can't convert #{pattern.class} into String.""
+      end
+      @pattern = pattern.to_str.dup.freeze
+    end
+","##
+# Creates a new <tt>Addressable::Template</tt> object.
+#
+# @param [#to_str] pattern The URI Template pattern.
+#
+# @return [Addressable::Template] The initialized Template object.
+"
+Addressable::Template,freeze,"","",Addressable::Template,"    def freeze
+      self.variables
+      self.variable_defaults
+      self.named_captures
+      super
+    end
+","##
+# Freeze URI, initializing instance variables.
+#
+# @return [Addressable::URI] The frozen URI object.
+"
+Addressable::Template,inspect,"","",String,"    def inspect
+      sprintf(""#<%s:%#0x PATTERN:%s>"",
+        self.class.to_s, self.object_id, self.pattern)
+    end
+","##
+# Returns a <tt>String</tt> representation of the Template object's state.
+#
+# @return [String] The Template object's state, as a <tt>String</tt>.
+"
+Addressable::Template,==,template,"template => (Addressable::Template or Addressable::URI)
+",(false or true),"    def ==(template)
+      return false unless template.kind_of?(Template)
+      return self.pattern == template.pattern
+    end
+","##
+# Returns <code>true</code> if the Template objects are equal. This method
+# does NOT normalize either Template before doing the comparison.
+#
+# @param [Object] template The Template to compare.
+#
+# @return [TrueClass, FalseClass]
+#   <code>true</code> if the Templates are equivalent, <code>false</code>
+#   otherwise.
+"
+Addressable::Template,extract,"uri, processor","uri => String
+processor => nil
+","(Hash<String, (Array<String> or String)> or Hash<String, String> or Hash<String, nil>)","    def extract(uri, processor=nil)
+      match_data = self.match(uri, processor)
+      return (match_data ? match_data.mapping : nil)
+    end
+","##
+# Extracts a mapping from the URI using a URI Template pattern.
+#
+# @param [Addressable::URI, #to_str] uri
+#   The URI to extract from.
+#
+# @param [#restore, #match] processor
+#   A template processor object may optionally be supplied.
+#
+#   The object should respond to either the <tt>restore</tt> or
+#   <tt>match</tt> messages or both. The <tt>restore</tt> method should
+#   take two parameters: `[String] name` and `[String] value`.
+#   The <tt>restore</tt> method should reverse any transformations that
+#   have been performed on the value to ensure a valid URI.
+#   The <tt>match</tt> method should take a single
+#   parameter: `[String] name`.  The <tt>match</tt> method should return
+#   a <tt>String</tt> containing a regular expression capture group for
+#   matching on that particular variable. The default value is `"".*?""`.
+#   The <tt>match</tt> method has no effect on multivariate operator
+#   expansions.
+#
+# @return [Hash, NilClass]
+#   The <tt>Hash</tt> mapping that was extracted from the URI, or
+#   <tt>nil</tt> if the URI didn't match the template.
+#
+# @example
+#   class ExampleProcessor
+#     def self.restore(name, value)
+#       return value.gsub(/\+/, "" "") if name == ""query""
+#       return value
+#     end
+#
+#     def self.match(name)
+#       return "".*?"" if name == ""first""
+#       return "".*""
+#     end
+#   end
+#
+#   uri = Addressable::URI.parse(
+#     ""http://example.com/search/an+example+search+query/""
+#   )
+#   Addressable::Template.new(
+#     ""http://example.com/search/{query}/""
+#   ).extract(uri, ExampleProcessor)
+#   #=> {""query"" => ""an example search query""}
+#
+#   uri = Addressable::URI.parse(""http://example.com/a/b/c/"")
+#   Addressable::Template.new(
+#     ""http://example.com/{first}/{second}/""
+#   ).extract(uri, ExampleProcessor)
+#   #=> {""first"" => ""a"", ""second"" => ""b/c""}
+#
+#   uri = Addressable::URI.parse(""http://example.com/a/b/c/"")
+#   Addressable::Template.new(
+#     ""http://example.com/{first}/{-list|/|second}/""
+#   ).extract(uri)
+#   #=> {""first"" => ""a"", ""second"" => [""b"", ""c""]}
+"
+Addressable::Template,match,"uri, processor","uri => (Addressable::URI or String)
+processor => Class
+",Addressable::Template::MatchData,"    def match(uri, processor=nil)
+      uri = Addressable::URI.parse(uri)
+      mapping = {}
+
+      # First, we need to process the pattern, and extract the values.
+      expansions, expansion_regexp =
+        parse_template_pattern(pattern, processor)
+
+      return nil unless uri.to_str.match(expansion_regexp)
+      unparsed_values = uri.to_str.scan(expansion_regexp).flatten
+
+      if uri.to_str == pattern
+        return Addressable::Template::MatchData.new(uri, self, mapping)
+      elsif expansions.size > 0
+        index = 0
+        expansions.each do |expansion|
+          _, operator, varlist = *expansion.match(EXPRESSION)
+          varlist.split(',').each do |varspec|
+            _, name, modifier = *varspec.match(VARSPEC)
+            mapping[name] ||= nil
+            case operator
+            when nil, '+', '#', '/', '.'
+              unparsed_value = unparsed_values[index]
+              name = varspec[VARSPEC, 1]
+              value = unparsed_value
+              value = value.split(JOINERS[operator]) if value && modifier == '*'
+            when ';', '?', '&'
+              if modifier == '*'
+                if unparsed_values[index]
+                  value = unparsed_values[index].split(JOINERS[operator])
+                  value = value.inject({}) do |acc, v|
+                    key, val = v.split('=')
+                    val = """" if val.nil?
+                    acc[key] = val
+                    acc
+                  end
+                end
+              else
+                if (unparsed_values[index])
+                  name, value = unparsed_values[index].split('=')
+                  value = """" if value.nil?
+                end
+              end
+            end
+            if processor != nil && processor.respond_to?(:restore)
+              value = processor.restore(name, value)
+            end
+            if processor == nil
+              if value.is_a?(Hash)
+                value = value.inject({}){|acc, (k, v)|
+                  acc[Addressable::URI.unencode_component(k)] =
+                    Addressable::URI.unencode_component(v)
+                  acc
+                }
+              elsif value.is_a?(Array)
+                value = value.map{|v| Addressable::URI.unencode_component(v) }
+              else
+                value = Addressable::URI.unencode_component(value)
+              end
+            end
+            if !mapping.has_key?(name) || mapping[name].nil?
+              # Doesn't exist, set to value (even if value is nil)
+              mapping[name] = value
+            end
+            index = index + 1
+          end
+        end
+        return Addressable::Template::MatchData.new(uri, self, mapping)
+      else
+        return nil
+      end
+    end
+","##
+# Extracts match data from the URI using a URI Template pattern.
+#
+# @param [Addressable::URI, #to_str] uri
+#   The URI to extract from.
+#
+# @param [#restore, #match] processor
+#   A template processor object may optionally be supplied.
+#
+#   The object should respond to either the <tt>restore</tt> or
+#   <tt>match</tt> messages or both. The <tt>restore</tt> method should
+#   take two parameters: `[String] name` and `[String] value`.
+#   The <tt>restore</tt> method should reverse any transformations that
+#   have been performed on the value to ensure a valid URI.
+#   The <tt>match</tt> method should take a single
+#   parameter: `[String] name`. The <tt>match</tt> method should return
+#   a <tt>String</tt> containing a regular expression capture group for
+#   matching on that particular variable. The default value is `"".*?""`.
+#   The <tt>match</tt> method has no effect on multivariate operator
+#   expansions.
+#
+# @return [Hash, NilClass]
+#   The <tt>Hash</tt> mapping that was extracted from the URI, or
+#   <tt>nil</tt> if the URI didn't match the template.
+#
+# @example
+#   class ExampleProcessor
+#     def self.restore(name, value)
+#       return value.gsub(/\+/, "" "") if name == ""query""
+#       return value
+#     end
+#
+#     def self.match(name)
+#       return "".*?"" if name == ""first""
+#       return "".*""
+#     end
+#   end
+#
+#   uri = Addressable::URI.parse(
+#     ""http://example.com/search/an+example+search+query/""
+#   )
+#   match = Addressable::Template.new(
+#     ""http://example.com/search/{query}/""
+#   ).match(uri, ExampleProcessor)
+#   match.variables
+#   #=> [""query""]
+#   match.captures
+#   #=> [""an example search query""]
+#
+#   uri = Addressable::URI.parse(""http://example.com/a/b/c/"")
+#   match = Addressable::Template.new(
+#     ""http://example.com/{first}/{+second}/""
+#   ).match(uri, ExampleProcessor)
+#   match.variables
+#   #=> [""first"", ""second""]
+#   match.captures
+#   #=> [""a"", ""b/c""]
+#
+#   uri = Addressable::URI.parse(""http://example.com/a/b/c/"")
+#   match = Addressable::Template.new(
+#     ""http://example.com/{first}{/second*}/""
+#   ).match(uri)
+#   match.variables
+#   #=> [""first"", ""second""]
+#   match.captures
+#   #=> [""a"", [""b"", ""c""]]
+"
+Addressable::Template,partial_expand,"mapping, processor, normalize_values","mapping => (Hash<String, String> or Hash<Symbol, Integer> or Hash<Symbol, String> or Hash<Symbol, nil>)
+processor => nil
+normalize_values => (false or true)
+",Addressable::Template,"    def partial_expand(mapping, processor=nil, normalize_values=true)
+      result = self.pattern.dup
+      mapping = normalize_keys(mapping)
+      result.gsub!( EXPRESSION ) do |capture|
+        transform_partial_capture(mapping, capture, processor, normalize_values)
+      end
+      return Addressable::Template.new(result)
+    end
+","##
+# Expands a URI template into another URI template.
+#
+# @param [Hash] mapping The mapping that corresponds to the pattern.
+# @param [#validate, #transform] processor
+#   An optional processor object may be supplied.
+# @param [Boolean] normalize_values
+#   Optional flag to enable/disable unicode normalization. Default: true
+#
+# The object should respond to either the <tt>validate</tt> or
+# <tt>transform</tt> messages or both. Both the <tt>validate</tt> and
+# <tt>transform</tt> methods should take two parameters: <tt>name</tt> and
+# <tt>value</tt>. The <tt>validate</tt> method should return <tt>true</tt>
+# or <tt>false</tt>; <tt>true</tt> if the value of the variable is valid,
+# <tt>false</tt> otherwise. An <tt>InvalidTemplateValueError</tt>
+# exception will be raised if the value is invalid. The <tt>transform</tt>
+# method should return the transformed variable value as a <tt>String</tt>.
+# If a <tt>transform</tt> method is used, the value will not be percent
+# encoded automatically. Unicode normalization will be performed both
+# before and after sending the value to the transform method.
+#
+# @return [Addressable::Template] The partially expanded URI template.
+#
+# @example
+#   Addressable::Template.new(
+#     ""http://example.com/{one}/{two}/""
+#   ).partial_expand({""one"" => ""1""}).pattern
+#   #=> ""http://example.com/1/{two}/""
+#
+#   Addressable::Template.new(
+#     ""http://example.com/{?one,two}/""
+#   ).partial_expand({""one"" => ""1""}).pattern
+#   #=> ""http://example.com/?one=1{&two}/""
+#
+#   Addressable::Template.new(
+#     ""http://example.com/{?one,two,three}/""
+#   ).partial_expand({""one"" => ""1"", ""three"" => 3}).pattern
+#   #=> ""http://example.com/?one=1{&two}&three=3""
+"
+Addressable::Template,expand,"mapping, processor, normalize_values","mapping => (Hash<String, String> or Hash<Symbol, (Array<String> or Hash<%bot, %bot> or Hash<String, String> or String)> or Hash<Symbol, (Array<String> or Hash<String, String> or String)> or Hash<Symbol, (Array<String> or String)> or Hash<Symbol, (BigDecimal or Integer or Symbol or true)> or Hash<Symbol, String>)
+processor => Class
+normalize_values => (false or true)
+",Addressable::URI,"    def expand(mapping, processor=nil, normalize_values=true)
+      result = self.pattern.dup
+      mapping = normalize_keys(mapping)
+      result.gsub!( EXPRESSION ) do |capture|
+        transform_capture(mapping, capture, processor, normalize_values)
+      end
+      return Addressable::URI.parse(result)
+    end
+","##
+# Expands a URI template into a full URI.
+#
+# @param [Hash] mapping The mapping that corresponds to the pattern.
+# @param [#validate, #transform] processor
+#   An optional processor object may be supplied.
+# @param [Boolean] normalize_values
+#   Optional flag to enable/disable unicode normalization. Default: true
+#
+# The object should respond to either the <tt>validate</tt> or
+# <tt>transform</tt> messages or both. Both the <tt>validate</tt> and
+# <tt>transform</tt> methods should take two parameters: <tt>name</tt> and
+# <tt>value</tt>. The <tt>validate</tt> method should return <tt>true</tt>
+# or <tt>false</tt>; <tt>true</tt> if the value of the variable is valid,
+# <tt>false</tt> otherwise. An <tt>InvalidTemplateValueError</tt>
+# exception will be raised if the value is invalid. The <tt>transform</tt>
+# method should return the transformed variable value as a <tt>String</tt>.
+# If a <tt>transform</tt> method is used, the value will not be percent
+# encoded automatically. Unicode normalization will be performed both
+# before and after sending the value to the transform method.
+#
+# @return [Addressable::URI] The expanded URI template.
+#
+# @example
+#   class ExampleProcessor
+#     def self.validate(name, value)
+#       return !!(value =~ /^[\w ]+$/) if name == ""query""
+#       return true
+#     end
+#
+#     def self.transform(name, value)
+#       return value.gsub(/ /, ""+"") if name == ""query""
+#       return value
+#     end
+#   end
+#
+#   Addressable::Template.new(
+#     ""http://example.com/search/{query}/""
+#   ).expand(
+#     {""query"" => ""an example search query""},
+#     ExampleProcessor
+#   ).to_str
+#   #=> ""http://example.com/search/an+example+search+query/""
+#
+#   Addressable::Template.new(
+#     ""http://example.com/search/{query}/""
+#   ).expand(
+#     {""query"" => ""an example search query""}
+#   ).to_str
+#   #=> ""http://example.com/search/an%20example%20search%20query/""
+#
+#   Addressable::Template.new(
+#     ""http://example.com/search/{query}/""
+#   ).expand(
+#     {""query"" => ""bogus!""},
+#     ExampleProcessor
+#   ).to_str
+#   #=> Addressable::Template::InvalidTemplateValueError
+"
+Addressable::Template,variables,"","",(Array<%bot> or Array<String>),"    def variables
+      @variables ||= ordered_variable_defaults.map { |var, val| var }.uniq
+    end
+","##
+# Returns an Array of variables used within the template pattern.
+# The variables are listed in the Array in the order they appear within
+# the pattern.  Multiple occurrences of a variable within a pattern are
+# not represented in this Array.
+#
+# @return [Array] The variables present in the template's pattern.
+"
+Addressable::Template,variable_defaults,"","","Hash<%bot, %bot>","    def variable_defaults
+      @variable_defaults ||=
+        Hash[*ordered_variable_defaults.reject { |k, v| v.nil? }.flatten]
+    end
+","##
+# Returns a mapping of variables to their default values specified
+# in the template. Variables without defaults are not returned.
+#
+# @return [Hash] Mapping of template variables to their defaults
+"
+Addressable::Template,to_regexp,"","",Regexp,"    def to_regexp
+      _, source = parse_template_pattern(pattern)
+      Regexp.new(source)
+    end
+","##
+# Coerces a template into a `Regexp` object. This regular expression will
+# behave very similarly to the actual template, and should match the same
+# URI values, but it cannot fully handle, for example, values that would
+# extract to an `Array`.
+#
+# @return [Regexp] A regular expression which should match the template.
+"
+Addressable::Template,source,"","",String,"    def source
+      self.to_regexp.source
+    end
+","##
+# Returns the source of the coerced `Regexp`.
+#
+# @return [String] The source of the `Regexp` given by {#to_regexp}.
+#
+# @api private
+"
+Addressable::Template,named_captures,"","","(Hash<%bot, %bot> or Hash<String, Array<Integer>>)","    def named_captures
+      self.to_regexp.named_captures
+    end
+","##
+# Returns the named captures of the coerced `Regexp`.
+#
+# @return [Hash] The named captures of the `Regexp` given by {#to_regexp}.
+#
+# @api private
+"
+Addressable::Template,generate,"params, recall, options","params => (Hash<%bot, %bot> or Hash<Symbol, String>)
+recall => Hash<Symbol, String>
+options => Hash<%bot, %bot>
+",String,"    def generate(params={}, recall={}, options={})
+      merged = recall.merge(params)
+      if options[:processor]
+        processor = options[:processor]
+      elsif options[:parameterize]
+        # TODO: This is sending me into fits trying to shoe-horn this into
+        # the existing API. I think I've got this backwards and processors
+        # should be a set of 4 optional blocks named :validate, :transform,
+        # :match, and :restore. Having to use a singleton here is a huge
+        # code smell.
+        processor = Object.new
+        class <<processor
+          attr_accessor :block
+          def transform(name, value)
+            block.call(name, value)
+          end
+        end
+        processor.block = options[:parameterize]
+      else
+        processor = nil
+      end
+      result = self.expand(merged, processor)
+      result.to_s if result
+    end
+","##
+# Generates a route result for a given set of parameters.
+# Should only be used by rack-mount.
+#
+# @param params [Hash] The set of parameters used to expand the template.
+# @param recall [Hash] Default parameters used to expand the template.
+# @param options [Hash] Either a `:processor` or a `:parameterize` block.
+#
+# @api private
+"
+Addressable::Template,ordered_variable_defaults,"","",(Array<%bot> or Array<String>),"    def ordered_variable_defaults
+      @ordered_variable_defaults ||= begin
+        expansions, _ = parse_template_pattern(pattern)
+        expansions.map do |capture|
+          _, _, varlist = *capture.match(EXPRESSION)
+          varlist.split(',').map do |varspec|
+            varspec[VARSPEC, 1]
+          end
+        end.flatten
+      end
+    end
+",""
+Addressable::Template,transform_partial_capture,"mapping, capture, processor, normalize_values","mapping => (Hash<String, Integer> or Hash<String, String> or Hash<String, nil>)
+capture => String
+processor => nil
+normalize_values => (false or true)
+",String,"    def transform_partial_capture(mapping, capture, processor = nil,
+                                  normalize_values = true)
+      _, operator, varlist = *capture.match(EXPRESSION)
+
+      vars = varlist.split("","")
+
+      if operator == ""?""
+        # partial expansion of form style query variables sometimes requires a
+        # slight reordering of the variables to produce a valid url.
+        first_to_expand = vars.find { |varspec|
+          _, name, _ =  *varspec.match(VARSPEC)
+          mapping.key?(name) && !mapping[name].nil?
+        }
+
+        vars = [first_to_expand] + vars.reject {|varspec| varspec == first_to_expand}  if first_to_expand
+      end
+
+      vars.
+        inject("""".dup) do |acc, varspec|
+          _, name, _ =  *varspec.match(VARSPEC)
+          next_val = if mapping.key? name
+                       transform_capture(mapping, ""{#{operator}#{varspec}}"",
+                                         processor, normalize_values)
+                     else
+                       ""{#{operator}#{varspec}}""
+                     end
+          # If we've already expanded at least one '?' operator with non-empty
+          # value, change to '&'
+          operator = ""&"" if (operator == ""?"") && (next_val != """")
+          acc << next_val
+      end
+    end
+","##
+# Loops through each capture and expands any values available in mapping
+#
+# @param [Hash] mapping
+#   Set of keys to expand
+# @param [String] capture
+#   The expression to expand
+# @param [#validate, #transform] processor
+#   An optional processor object may be supplied.
+# @param [Boolean] normalize_values
+#   Optional flag to enable/disable unicode normalization. Default: true
+#
+# The object should respond to either the <tt>validate</tt> or
+# <tt>transform</tt> messages or both. Both the <tt>validate</tt> and
+# <tt>transform</tt> methods should take two parameters: <tt>name</tt> and
+# <tt>value</tt>. The <tt>validate</tt> method should return <tt>true</tt>
+# or <tt>false</tt>; <tt>true</tt> if the value of the variable is valid,
+# <tt>false</tt> otherwise. An <tt>InvalidTemplateValueError</tt> exception
+# will be raised if the value is invalid. The <tt>transform</tt> method
+# should return the transformed variable value as a <tt>String</tt>. If a
+# <tt>transform</tt> method is used, the value will not be percent encoded
+# automatically. Unicode normalization will be performed both before and
+# after sending the value to the transform method.
+#
+# @return [String] The expanded expression
+"
+Addressable::Template,transform_capture,"mapping, capture, processor, normalize_values","mapping => (Hash<String, (Array<String> or Hash<%bot, %bot> or Hash<String, String> or String)> or Hash<String, (Array<String> or Hash<String, String> or String)> or Hash<String, (Array<String> or String)> or Hash<String, (BigDecimal or Integer or Symbol or true)> or Hash<String, Integer> or Hash<String, String> or Hash<String, nil>)
+capture => String
+processor => Class
+normalize_values => (false or true)
+",String,"    def transform_capture(mapping, capture, processor=nil,
+                          normalize_values=true)
+      _, operator, varlist = *capture.match(EXPRESSION)
+      return_value = varlist.split(',').inject([]) do |acc, varspec|
+        _, name, modifier = *varspec.match(VARSPEC)
+        value = mapping[name]
+        unless value == nil || value == {}
+          allow_reserved = %w(+ #).include?(operator)
+          # Common primitives where the .to_s output is well-defined
+          if Numeric === value || Symbol === value ||
+              value == true || value == false
+            value = value.to_s
+          end
+          length = modifier.gsub(':', '').to_i if modifier =~ /^:\d+/
+
+          unless (Hash === value) ||
+            value.respond_to?(:to_ary) || value.respond_to?(:to_str)
+            raise TypeError,
+              ""Can't convert #{value.class} into String or Array.""
+          end
+
+          value = normalize_value(value) if normalize_values
+
+          if processor == nil || !processor.respond_to?(:transform)
+            # Handle percent escaping
+            if allow_reserved
+              encode_map =
+                Addressable::URI::CharacterClasses::RESERVED +
+                Addressable::URI::CharacterClasses::UNRESERVED
+            else
+              encode_map = Addressable::URI::CharacterClasses::UNRESERVED
+            end
+            if value.kind_of?(Array)
+              transformed_value = value.map do |val|
+                if length
+                  Addressable::URI.encode_component(val[0...length], encode_map)
+                else
+                  Addressable::URI.encode_component(val, encode_map)
+                end
+              end
+              unless modifier == ""*""
+                transformed_value = transformed_value.join(',')
+              end
+            elsif value.kind_of?(Hash)
+              transformed_value = value.map do |key, val|
+                if modifier == ""*""
+                  ""#{
+                    Addressable::URI.encode_component( key, encode_map)
+                  }=#{
+                    Addressable::URI.encode_component( val, encode_map)
+                  }""
+                else
+                  ""#{
+                    Addressable::URI.encode_component( key, encode_map)
+                  },#{
+                    Addressable::URI.encode_component( val, encode_map)
+                  }""
+                end
+              end
+              unless modifier == ""*""
+                transformed_value = transformed_value.join(',')
+              end
+            else
+              if length
+                transformed_value = Addressable::URI.encode_component(
+                  value[0...length], encode_map)
+              else
+                transformed_value = Addressable::URI.encode_component(
+                  value, encode_map)
+              end
+            end
+          end
+
+          # Process, if we've got a processor
+          if processor != nil
+            if processor.respond_to?(:validate)
+              if !processor.validate(name, value)
+                display_value = value.kind_of?(Array) ? value.inspect : value
+                raise InvalidTemplateValueError,
+                  ""#{name}=#{display_value} is an invalid template value.""
+              end
+            end
+            if processor.respond_to?(:transform)
+              transformed_value = processor.transform(name, value)
+              if normalize_values
+                transformed_value = normalize_value(transformed_value)
+              end
+            end
+          end
+          acc << [name, transformed_value]
+        end
+        acc
+      end
+      return """" if return_value.empty?
+      join_values(operator, return_value)
+    end
+","##
+# Transforms a mapped value so that values can be substituted into the
+# template.
+#
+# @param [Hash] mapping The mapping to replace captures
+# @param [String] capture
+#   The expression to replace
+# @param [#validate, #transform] processor
+#   An optional processor object may be supplied.
+# @param [Boolean] normalize_values
+#   Optional flag to enable/disable unicode normalization. Default: true
+#
+#
+# The object should respond to either the <tt>validate</tt> or
+# <tt>transform</tt> messages or both. Both the <tt>validate</tt> and
+# <tt>transform</tt> methods should take two parameters: <tt>name</tt> and
+# <tt>value</tt>. The <tt>validate</tt> method should return <tt>true</tt>
+# or <tt>false</tt>; <tt>true</tt> if the value of the variable is valid,
+# <tt>false</tt> otherwise. An <tt>InvalidTemplateValueError</tt> exception
+# will be raised if the value is invalid. The <tt>transform</tt> method
+# should return the transformed variable value as a <tt>String</tt>. If a
+# <tt>transform</tt> method is used, the value will not be percent encoded
+# automatically. Unicode normalization will be performed both before and
+# after sending the value to the transform method.
+#
+# @return [String] The expanded expression
+"
+Addressable::Template,join_values,"operator, return_value","operator => String
+return_value => (Array<(Array<(Array<String> or String)> or Array<String>)> or Array<Array<(Array<String> or String)>> or Array<Array<String>>)
+",String,"    def join_values(operator, return_value)
+      leader = LEADERS.fetch(operator, '')
+      joiner = JOINERS.fetch(operator, ',')
+      case operator
+      when '&', '?'
+        leader + return_value.map{|k,v|
+          if v.is_a?(Array) && v.first =~ /=/
+            v.join(joiner)
+          elsif v.is_a?(Array)
+            v.map{|inner_value| ""#{k}=#{inner_value}""}.join(joiner)
+          else
+            ""#{k}=#{v}""
+          end
+        }.join(joiner)
+      when ';'
+        return_value.map{|k,v|
+          if v.is_a?(Array) && v.first =~ /=/
+            ';' + v.join("";"")
+          elsif v.is_a?(Array)
+            ';' + v.map{|inner_value| ""#{k}=#{inner_value}""}.join("";"")
+          else
+            v && v != '' ?  "";#{k}=#{v}"" : "";#{k}""
+          end
+        }.join
+      else
+        leader + return_value.map{|k,v| v}.join(joiner)
+      end
+    end
+","##
+# Takes a set of values, and joins them together based on the
+# operator.
+#
+# @param [String, Nil] operator One of the operators from the set
+#   (?,&,+,#,;,/,.), or nil if there wasn't one.
+# @param [Array] return_value
+#   The set of return values (as [variable_name, value] tuples) that will
+#   be joined together.
+#
+# @return [String] The transformed mapped value
+"
+Addressable::Template,normalize_value,value,"value => (Array<String> or Hash<String, String> or String)
+","(Array<String> or Hash<String, String> or String)","    def normalize_value(value)
+      unless value.is_a?(Hash)
+        value = value.respond_to?(:to_ary) ? value.to_ary : value.to_str
+      end
+
+      # Handle unicode normalization
+      if value.kind_of?(Array)
+        value.map! { |val| Addressable::IDNA.unicode_normalize_kc(val) }
+      elsif value.kind_of?(Hash)
+        value = value.inject({}) { |acc, (k, v)|
+          acc[Addressable::IDNA.unicode_normalize_kc(k)] =
+            Addressable::IDNA.unicode_normalize_kc(v)
+          acc
+        }
+      else
+        value = Addressable::IDNA.unicode_normalize_kc(value)
+      end
+      value
+    end
+","##
+# Takes a set of values, and joins them together based on the
+# operator.
+#
+# @param [Hash, Array, String] value
+#   Normalizes keys and values with IDNA#unicode_normalize_kc
+#
+# @return [Hash, Array, String] The normalized values
+"
+Addressable::Template,normalize_keys,mapping,"mapping => (Hash<String, String> or Hash<Symbol, (Array<String> or Hash<%bot, %bot> or Hash<String, String> or String)> or Hash<Symbol, (Array<String> or Hash<String, String> or String)> or Hash<Symbol, (Array<String> or String)> or Hash<Symbol, (BigDecimal or Integer or Symbol or true)> or Hash<Symbol, Integer> or Hash<Symbol, String> or Hash<Symbol, nil>)
+","(Hash<String, (Array<String> or Hash<%bot, %bot> or Hash<String, String> or String)> or Hash<String, (Array<String> or Hash<String, String> or String)> or Hash<String, (Array<String> or String)> or Hash<String, (BigDecimal or Integer or Symbol or true)> or Hash<String, Integer> or Hash<String, String> or Hash<String, nil>)","    def normalize_keys(mapping)
+      return mapping.inject({}) do |accu, pair|
+        name, value = pair
+        if Symbol === name
+          name = name.to_s
+        elsif name.respond_to?(:to_str)
+          name = name.to_str
+        else
+          raise TypeError,
+            ""Can't convert #{name.class} into String.""
+        end
+        accu[name] = value
+        accu
+      end
+    end
+","##
+# Generates a hash with string keys
+#
+# @param [Hash] mapping A mapping hash to normalize
+#
+# @return [Hash]
+#   A hash with stringified keys
+"
+Addressable::Template,parse_template_pattern,"pattern, processor","pattern => String
+processor => Class
+",(Array<(Array<%bot> or Regexp)> or Array<(Array<String> or Regexp)>),"    def parse_template_pattern(pattern, processor=nil)
+      # Escape the pattern. The two gsubs restore the escaped curly braces
+      # back to their original form. Basically, escape everything that isn't
+      # within an expansion.
+      escaped_pattern = Regexp.escape(
+        pattern
+      ).gsub(/\\\{(.*?)\\\}/) do |escaped|
+        escaped.gsub(/\\(.)/, ""\\1"")
+      end
+
+      expansions = []
+
+      # Create a regular expression that captures the values of the
+      # variables in the URI.
+      regexp_string = escaped_pattern.gsub( EXPRESSION ) do |expansion|
+
+        expansions << expansion
+        _, operator, varlist = *expansion.match(EXPRESSION)
+        leader = Regexp.escape(LEADERS.fetch(operator, ''))
+        joiner = Regexp.escape(JOINERS.fetch(operator, ','))
+        combined = varlist.split(',').map do |varspec|
+          _, name, modifier = *varspec.match(VARSPEC)
+
+          result = processor && processor.respond_to?(:match) ? processor.match(name) : nil
+          if result
+            ""(?<#{name}>#{ result })""
+          else
+            group = case operator
+            when '+'
+              ""#{ RESERVED }*?""
+            when '#'
+              ""#{ RESERVED }*?""
+            when '/'
+              ""#{ UNRESERVED }*?""
+            when '.'
+              ""#{ UNRESERVED.gsub('\.', '') }*?""
+            when ';'
+              ""#{ UNRESERVED }*=?#{ UNRESERVED }*?""
+            when '?'
+              ""#{ UNRESERVED }*=#{ UNRESERVED }*?""
+            when '&'
+              ""#{ UNRESERVED }*=#{ UNRESERVED }*?""
+            else
+              ""#{ UNRESERVED }*?""
+            end
+            if modifier == '*'
+              ""(?<#{name}>#{group}(?:#{joiner}?#{group})*)?""
+            else
+              ""(?<#{name}>#{group})?""
+            end
+          end
+        end.join(""#{joiner}?"")
+        ""(?:|#{leader}#{combined})""
+      end
+
+      # Ensure that the regular expression matches the whole URI.
+      regexp_string = ""^#{regexp_string}$""
+      return expansions, Regexp.new(regexp_string)
+    end
+","##
+# Generates the <tt>Regexp</tt> that parses a template pattern.
+#
+# @param [String] pattern The URI template pattern.
+# @param [#match] processor The template processor to use.
+#
+# @return [Regexp]
+#   A regular expression which may be used to parse a template pattern.
+"

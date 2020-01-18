@@ -1,0 +1,1288 @@
+Class,Method,Parameter Names,Observed Arg Types,Observed Return Type,Source Code,Comments
+I18n::Middleware,initialize,app,"app => DummyRackApp
+",DummyRackApp,"    def initialize(app)
+      @app = app
+    end
+",""
+I18n::Middleware,call,env,"env => Hash<%bot, %bot>
+",Symbol,"    def call(env)
+      @app.call(env)
+    ensure
+      Thread.current[:i18n_config] = I18n::Config.new
+    end
+",""
+I18n::ExceptionHandler,call,"exception, _locale, _key, _options","exception => I18n::MissingTranslation
+_locale => (String or Symbol)
+_key => (String or Symbol)
+_options => (Hash<%bot, %bot> or Hash<Symbol, Array<Symbol>> or Hash<Symbol, Integer> or Hash<Symbol, Symbol> or Hash<Symbol, false>)
+",String,"    def call(exception, _locale, _key, _options)
+      if exception.is_a?(MissingTranslation)
+        exception.message
+      else
+        raise exception
+      end
+    end
+",""
+I18n::Disabled,initialize,method,"method => String
+",I18n::Disabled,"    def initialize(method)
+      super(<<~MESSAGE)
+        I18n.#{method} is currently disabled, likely because your application is still in its loading phase.
+
+        This method is meant to display text in the user locale, so calling it before the user locale has
+        been set is likely to display text from the wrong locale to some users.
+
+        If you have a legitimate reason to access i18n data outside of the user flow, you can do so by passing
+        the desired locale explictly with the `locale` argument, e.g. `I18n.#{method}(..., locale: :en)`
+      MESSAGE
+    end
+",""
+I18n::InvalidLocale,initialize,locale,"locale => (String or Symbol)
+",I18n::InvalidLocale,"    def initialize(locale)
+      @locale = locale
+      super ""#{locale.inspect} is not a valid locale""
+    end
+",""
+I18n::InvalidLocaleData,initialize,"filename, exception_message","filename => String
+exception_message => String
+",I18n::InvalidLocaleData,"    def initialize(filename, exception_message)
+      @filename, @exception_message = filename, exception_message
+      super ""can not load translations from #{filename}: #{exception_message}""
+    end
+",""
+I18n::MissingTranslation::Base,keys,"","",Array<Symbol>,"      def keys
+        @keys ||= I18n.normalize_keys(locale, key, options[:scope]).tap do |keys|
+          keys << 'no key' if keys.size < 2
+        end
+      end
+",""
+I18n::MissingTranslation::Base,message,"","",String,"      def message
+        ""translation missing: #{keys.join('.')}""
+      end
+",""
+I18n::MissingTranslation::Base,to_exception,"","",I18n::MissingTranslationData,"      def to_exception
+        MissingTranslationData.new(locale, key, options)
+      end
+",""
+I18n::InvalidPluralizationData,initialize,"entry, count, key","entry => Hash<Symbol, String>
+count => Integer
+key => Symbol
+",I18n::InvalidPluralizationData,"    def initialize(entry, count, key)
+      @entry, @count, @key = entry, count, key
+      super ""translation data #{entry.inspect} can not be used with :count => #{count}. key '#{key}' is missing.""
+    end
+",""
+I18n::MissingInterpolationArgument,initialize,"key, values, string","key => (String or Symbol)
+values => Hash<Symbol, String>
+string => String
+",I18n::MissingInterpolationArgument,"    def initialize(key, values, string)
+      @key, @values, @string = key, values, string
+      super ""missing interpolation argument #{key.inspect} in #{string.inspect} (#{values.inspect} given)""
+    end
+",""
+I18n::ReservedInterpolationKey,initialize,"key, string","key => Symbol
+string => String
+",I18n::ReservedInterpolationKey,"    def initialize(key, string)
+      @key, @string = key, string
+      super ""reserved key #{key.inspect} used in #{string.inspect}""
+    end
+",""
+I18n::UnknownFileType,initialize,"type, filename","type => String
+filename => String
+",I18n::UnknownFileType,"    def initialize(type, filename)
+      @type, @filename = type, filename
+      super ""can not load translations from #{filename}, the file type #{type} is not known""
+    end
+",""
+I18n::Config,locale,"","",(Symbol or false),"    def locale
+      defined?(@locale) && @locale != nil ? @locale : default_locale
+    end
+","# The only configuration value that is not global and scoped to thread is :locale.
+# It defaults to the default_locale.
+"
+I18n::Config,locale=,locale,"locale => (String or Symbol or false)
+",(Symbol or false),"    def locale=(locale)
+      I18n.enforce_available_locales!(locale)
+      @locale = locale && locale.to_sym
+    end
+","# Sets the current locale pseudo-globally, i.e. in the Thread.current hash.
+"
+I18n::Config,backend,"","",(I18n::Backend::Chain or I18n::Backend::KeyValue or I18n::Backend::Simple or I18nTest),"    def backend
+      @@backend ||= Backend::Simple.new
+    end
+","# Returns the current backend. Defaults to +Backend::Simple+.
+"
+I18n::Config,backend=,backend,"backend => (I18n::Backend::Chain or I18n::Backend::KeyValue or I18n::Backend::Simple or I18nTest)
+",(I18n::Backend::Chain or I18n::Backend::KeyValue or I18n::Backend::Simple or I18nTest),"    def backend=(backend)
+      @@backend = backend
+    end
+","# Sets the current backend. Used to set a custom backend.
+"
+I18n::Config,default_locale,"","",Symbol,"    def default_locale
+      @@default_locale ||= :en
+    end
+","# Returns the current default locale. Defaults to :'en'
+"
+I18n::Config,default_locale=,locale,"locale => (String or Symbol)
+",Symbol,"    def default_locale=(locale)
+      I18n.enforce_available_locales!(locale)
+      @@default_locale = locale && locale.to_sym
+    end
+","# Sets the current default locale. Used to set a custom default locale.
+"
+I18n::Config,available_locales,"","",(Array<%bot> or Array<Symbol>),"    def available_locales
+      @@available_locales ||= nil
+      @@available_locales || backend.available_locales
+    end
+","# Returns an array of locales for which translations are available.
+# Unless you explicitely set these through I18n.available_locales=
+# the call will be delegated to the backend.
+"
+I18n::Config,available_locales_set,"","",Set,"    def available_locales_set #:nodoc:
+      @@available_locales_set ||= available_locales.inject(Set.new) do |set, locale|
+        set << locale.to_s << locale.to_sym
+      end
+    end
+","# Caches the available locales list as both strings and symbols in a Set, so
+# that we can have faster lookups to do the available locales enforce check.
+"
+I18n::Config,available_locales=,locales,"locales => (Array<(String or Symbol)> or Array<Symbol> or Symbol)
+",nil,"    def available_locales=(locales)
+      @@available_locales = Array(locales).map { |locale| locale.to_sym }
+      @@available_locales = nil if @@available_locales.empty?
+      @@available_locales_set = nil
+    end
+","# Sets the available locales.
+"
+I18n::Config,available_locales_initialized?,"","",(false or true),"    def available_locales_initialized?
+      ( !!defined?(@@available_locales) && !!@@available_locales )
+    end
+","# Returns true if the available_locales have been initialized
+"
+I18n::Config,clear_available_locales_set,"","",nil,"    def clear_available_locales_set #:nodoc:
+      @@available_locales_set = nil
+    end
+","# Clears the available locales set so it can be recomputed again after I18n
+# gets reloaded.
+"
+I18n::Config,default_separator,"","",String,"    def default_separator
+      @@default_separator ||= '.'
+    end
+","# Returns the current default scope separator. Defaults to '.'
+"
+I18n::Config,default_separator=,separator,"separator => String
+",String,"    def default_separator=(separator)
+      @@default_separator = separator
+    end
+","# Sets the current default scope separator.
+"
+I18n::Config,missing_interpolation_argument_handler,"","",Proc,"    def missing_interpolation_argument_handler
+      @@missing_interpolation_argument_handler ||= lambda do |missing_key, provided_hash, string|
+        raise MissingInterpolationArgument.new(missing_key, provided_hash, string)
+      end
+    end
+","# Returns the current handler for situations when interpolation argument
+# is missing. MissingInterpolationArgument will be raised by default.
+"
+I18n::Config,missing_interpolation_argument_handler=,exception_handler,"exception_handler => Proc
+",Proc,"    def missing_interpolation_argument_handler=(exception_handler)
+      @@missing_interpolation_argument_handler = exception_handler
+    end
+","# Sets the missing interpolation argument handler. It can be any
+# object that responds to #call. The arguments that will be passed to #call
+# are the same as for MissingInterpolationArgument initializer. Use +Proc.new+
+# if you don't care about arity.
+#
+# == Example:
+# You can supress raising an exception and return string instead:
+#
+#   I18n.config.missing_interpolation_argument_handler = Proc.new do |key|
+#     ""#{key} is missing""
+#   end
+"
+I18n::Config,load_path,"","",(Array<%bot> or Array<Array<String>> or Array<String>),"    def load_path
+      @@load_path ||= []
+    end
+","# Allow clients to register paths providing translation data sources. The
+# backend defines acceptable sources.
+#
+# E.g. the provided SimpleBackend accepts a list of paths to translation
+# files which are either named *.rb and contain plain Ruby Hashes or are
+# named *.yml and contain YAML data. So for the SimpleBackend clients may
+# register translation files like this:
+#   I18n.load_path << 'path/to/locale/en.yml'
+"
+I18n::Config,load_path=,load_path,"load_path => (Array<Array<String>> or Array<String>)
+",(Array<(I18n::Backend::Chain or I18n::Backend::Simple)> or Array<(I18n::Backend::KeyValue or I18n::Backend::Simple)> or Array<I18n::Backend::Simple> or true),"    def load_path=(load_path)
+      @@load_path = load_path
+      @@available_locales_set = nil
+      backend.reload!
+    end
+","# Sets the load path instance. Custom implementations are expected to
+# behave like a Ruby Array.
+"
+I18n::Config,enforce_available_locales,"","",(false or true),"    def enforce_available_locales
+      @@enforce_available_locales
+    end
+",""
+I18n::Config,enforce_available_locales=,enforce_available_locales,"enforce_available_locales => (false or true)
+",(false or true),"    def enforce_available_locales=(enforce_available_locales)
+      @@enforce_available_locales = enforce_available_locales
+    end
+",""
+I18n::Config,interpolation_patterns,"","",Array<Regexp>,"    def interpolation_patterns
+      @@interpolation_patterns ||= I18n::DEFAULT_INTERPOLATION_PATTERNS.dup
+    end
+","# Returns the current interpolation patterns. Defaults to
+# I18n::DEFAULT_INTERPOLATION_PATTERNS.
+"
+I18n::Config,interpolation_patterns=,interpolation_patterns,"interpolation_patterns => Array<Regexp>
+",Array<Regexp>,"    def interpolation_patterns=(interpolation_patterns)
+      @@interpolation_patterns = interpolation_patterns
+    end
+","# Sets the current interpolation patterns. Used to set a interpolation
+# patterns.
+#
+# E.g. using {{}} as a placeholder like ""{{hello}}, world!"":
+#
+#   I18n.config.interpolation_patterns << /\{\{(\w+)\}\}/
+"
+[s]I18n::Gettext,plural_keys,args,"args => (Array<%bot> or Array<RDL::Type::NominalType>)
+","(Array<Symbol> or Hash<Symbol, Array<Symbol>>)","      def plural_keys(*args)
+        args.empty? ? @@plural_keys : @@plural_keys[args.first] || @@plural_keys[:en]
+      end
+","# returns an array of plural keys for the given locale or the whole hash
+# of locale mappings to plural keys so that we can convert from gettext's
+# integer-index based style
+# TODO move this information to the pluralization module
+"
+[s]I18n::Gettext,extract_scope,"msgid, separator","msgid => String
+separator => String
+",(Array<(Array<%bot> or String)> or Array<(Array<String> or String)>),"      def extract_scope(msgid, separator)
+        scope = msgid.to_s.split(separator)
+        msgid = scope.pop
+        [scope, msgid]
+      end
+",""
+I18n::Backend::Base,load_translations,filenames,"filenames => (Array<%bot> or Array<RDL::Type::GenericType> or Array<RDL::Type::NominalType>)
+",(Array<%bot> or Array<String>),"      def load_translations(*filenames)
+        filenames = I18n.load_path if filenames.empty?
+        filenames.flatten.each { |filename| load_file(filename) }
+      end
+","# Accepts a list of paths to translation files. Loads translations from
+# plain Ruby (*.rb), YAML files (*.yml), or JSON files (*.json). See #load_rb, #load_yml, and #load_json
+# for details.
+"
+I18n::Backend::Base,exists?,"locale, key","locale => Symbol
+key => (String or Symbol)
+",(false or true),"      def exists?(locale, key)
+        lookup(locale, key) != nil
+      end
+",""
+I18n::Backend::Base,localize,"locale, object, format, options","locale => Symbol
+object => (Date or Time)
+format => (String or Symbol)
+options => (Hash<%bot, %bot> or Hash<Symbol, String> or Hash<Symbol, nil>)
+",String,"      def localize(locale, object, format = :default, options = EMPTY_HASH)
+        if object.nil? && options.include?(:default)
+          return options[:default]
+        end
+        raise ArgumentError, ""Object must be a Date, DateTime or Time object. #{object.inspect} given."" unless object.respond_to?(:strftime)
+
+        if Symbol === format
+          key  = format
+          type = object.respond_to?(:sec) ? 'time' : 'date'
+          options = options.merge(:raise => true, :object => object, :locale => locale)
+          format  = I18n.t(:""#{type}.formats.#{key}"", **options)
+        end
+
+        format = translate_localization_format(locale, object, format, options)
+        object.strftime(format)
+      end
+","# Acts the same as +strftime+, but uses a localized version of the
+# format string. Takes a key from the date/time formats translations as
+# a format argument (<em>e.g.</em>, <tt>:short</tt> in <tt>:'date.formats'</tt>).
+"
+I18n::Backend::Base,reload!,"","",(nil or true),"      def reload!
+        eager_load! if eager_loaded?
+      end
+",""
+I18n::Backend::Base,eager_load!,"","",true,"      def eager_load!
+        @eager_loaded = true
+      end
+",""
+I18n::Backend::Base,eager_loaded?,"","",(false or true),"        def eager_loaded?
+          @eager_loaded ||= false
+        end
+",""
+I18n::Backend::Base,subtrees?,"","",true,"        def subtrees?
+          true
+        end
+",""
+I18n::Backend::Base,default,"locale, object, subject, options","locale => (String or Symbol)
+object => (String or Symbol)
+subject => (Array<%bot> or Array<Symbol> or Array<false> or Hash<%bot, %bot> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<Symbol, String>> or Hash<Symbol, String> or Proc or String or Symbol or false)
+options => (Hash<Symbol, (Array<%bot> or Hash<Symbol, String> or Integer or String)> or Hash<Symbol, (Array<%bot> or Integer or true)> or Hash<Symbol, (Array<%bot> or Proc or true)> or Hash<Symbol, (Array<%bot> or String or true)> or Hash<Symbol, (Array<%bot> or Symbol or true)> or Hash<Symbol, (Array<%bot> or false or true)> or Hash<Symbol, (Array<%bot> or true)> or Hash<Symbol, (Array<String> or Hash<Symbol, String> or Integer or String)> or Hash<Symbol, (Array<String> or String)> or Hash<Symbol, (Array<Symbol> or Hash<Symbol, (Integer or false)>)> or Hash<Symbol, (Array<Symbol> or Integer or true)> or Hash<Symbol, (Array<Symbol> or String or true)> or Hash<Symbol, (Array<Symbol> or String)> or Hash<Symbol, (Array<Symbol> or true)> or Hash<Symbol, (Array<false> or true)> or Hash<Symbol, (Hash<%bot, %bot> or false)> or Hash<Symbol, (Hash<Symbol, (Integer or false)> or Symbol)> or Hash<Symbol, (Hash<Symbol, Array<String>> or String or true)> or Hash<Symbol, (Hash<Symbol, Hash<Symbol, String>> or String or true)> or Hash<Symbol, (Hash<Symbol, String> or Integer)> or Hash<Symbol, (Integer or Proc)> or Hash<Symbol, (Integer or String)> or Hash<Symbol, (Integer or Symbol or true)> or Hash<Symbol, (Proc or String)> or Hash<Symbol, (Proc or false)> or Hash<Symbol, (String or Symbol or true)> or Hash<Symbol, (String or Symbol)> or Hash<Symbol, (String or false)> or Hash<Symbol, (String or true)> or Hash<Symbol, (Symbol or true)> or Hash<Symbol, (false or true)> or Hash<Symbol, (nil or true)> or Hash<Symbol, Array<Symbol>> or Hash<Symbol, Array<false>> or Hash<Symbol, Hash<%bot, %bot>> or Hash<Symbol, Hash<Symbol, String>> or Hash<Symbol, Proc> or Hash<Symbol, String> or Hash<Symbol, Symbol> or Hash<Symbol, false> or Hash<Symbol, nil>)
+","(Hash<%bot, %bot> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<Symbol, String>> or Hash<Symbol, String> or Proc or String or false)","        def default(locale, object, subject, options = EMPTY_HASH)
+          options = options.reject { |key, value| key == :default }
+          case subject
+          when Array
+            subject.each do |item|
+              result = resolve(locale, object, item, options)
+              return result unless result.nil?
+            end and nil
+          else
+            resolve(locale, object, subject, options)
+          end
+        end
+","# Evaluates defaults.
+# If given subject is an Array, it walks the array and returns the
+# first translation that can be resolved. Otherwise it tries to resolve
+# the translation directly.
+"
+I18n::Backend::Base,pluralize,"locale, entry, count","locale => Symbol
+entry => (Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or String)
+count => Integer
+","(Hash<Symbol, (Hash<Symbol, String> or String)> or String)","        def pluralize(locale, entry, count)
+          return entry unless entry.is_a?(Hash) && count && entry.values.none? { |v| v.is_a?(Hash) }
+
+          key = pluralization_key(entry, count)
+          raise InvalidPluralizationData.new(entry, count, key) unless entry.has_key?(key)
+          entry[key]
+        end
+","# Picks a translation from a pluralized mnemonic subkey according to English
+# pluralization rules :
+# - It will pick the :one subkey if count is equal to 1.
+# - It will pick the :other subkey otherwise.
+# - It will pick the :zero subkey in the special case where count is
+#   equal to 0 and there is a :zero subkey present. This behaviour is
+#   not standard with regards to the CLDR pluralization rules.
+# Other backends can implement more flexible or complex pluralization rules.
+"
+I18n::Backend::Base,interpolate,"locale, subject, values","locale => (String or Symbol)
+subject => (Array<(Integer or String)> or Array<Hash<Symbol, String>> or Array<String> or Hash<%bot, %bot> or Hash<(false or true), String> or Hash<Integer, String> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or Proc or String or false or true)
+values => (Hash<%bot, %bot> or Hash<Symbol, Float> or Hash<Symbol, Integer> or Hash<Symbol, Proc> or Hash<Symbol, String> or Hash<Symbol, nil>)
+","(Array<(Integer or String)> or Array<Hash<Symbol, String>> or Array<String> or Hash<%bot, %bot> or Hash<(false or true), String> or Hash<Integer, String> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or Proc or String or false or true)","        def interpolate(locale, subject, values = EMPTY_HASH)
+          return subject if values.empty?
+
+          case subject
+          when ::String then I18n.interpolate(subject, values)
+          when ::Array then subject.map { |element| interpolate(locale, element, values) }
+          else
+            subject
+          end
+        end
+","# Interpolates values into a given subject.
+#
+#   if the given subject is a string then:
+#   method interpolates ""file %{file} opened by %%{user}"", :file => 'test.txt', :user => 'Mr. X'
+#   # => ""file test.txt opened by %{user}""
+#
+#   if the given subject is an array then:
+#   each element of the array is recursively interpolated (until it finds a string)
+#   method interpolates [""yes, %{user}"", [""maybe no, %{user}, ""no, %{user}""]], :user => ""bartuz""
+#   # => ""[""yes, bartuz"",[""maybe no, bartuz"", ""no, bartuz""]]""
+"
+I18n::Backend::Base,deep_interpolate,"locale, data, values","locale => String
+data => (Array<String> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<Symbol, String>> or Hash<Symbol, String> or String)
+values => (Hash<%bot, %bot> or Hash<Symbol, String>)
+","(Array<String> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<Symbol, String>> or Hash<Symbol, String> or String)","        def deep_interpolate(locale, data, values = EMPTY_HASH)
+          return data if values.empty?
+
+          case data
+          when ::String
+            I18n.interpolate(data, values)
+          when ::Hash
+            data.each_with_object({}) do |(k, v), result|
+              result[k] = deep_interpolate(locale, v, values)
+            end
+          when ::Array
+            data.map do |v|
+              deep_interpolate(locale, v, values)
+            end
+          else
+            data
+          end
+        end
+","# Deep interpolation
+#
+#   deep_interpolate { people: { ann: ""Ann is %{ann}"", john: ""John is %{john}"" } },
+#                    ann: 'good', john: 'big'
+#   #=> { people: { ann: ""Ann is good"", john: ""John is big"" } }
+"
+I18n::Backend::Base,load_file,filename,"filename => String
+","(Hash<String, Hash<String, (Hash<String, (Array<String> or Hash<String, String>)> or Hash<String, (Hash<String, (Hash<String, (Hash<String, (Hash<String, String> or String)> or String)> or Hash<String, (Hash<String, String> or String)> or Hash<String, (Integer or String or true)>)> or Hash<String, (Integer or String or false)> or Hash<String, Hash<String, (Integer or String or false)>> or Hash<String, Hash<String, String>>)> or Hash<String, (Hash<String, String> or String)> or Hash<String, Hash<String, String>>)>> or Hash<String, Hash<String, Hash<String, String>>> or Hash<Symbol, Hash<String, (Hash<String, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or String)>> or Hash<Symbol, Hash<Symbol, Hash<Symbol, Hash<Symbol, (Array<Symbol> or Proc)>>>> or Hash<Symbol, Hash<Symbol, Hash<Symbol, Hash<Symbol, Proc>>>> or Hash<Symbol, Hash<Symbol, Hash<Symbol, String>>>)","        def load_file(filename)
+          type = File.extname(filename).tr('.', '').downcase
+          raise UnknownFileType.new(type, filename) unless respond_to?(:""load_#{type}"", true)
+          data = send(:""load_#{type}"", filename)
+          unless data.is_a?(Hash)
+            raise InvalidLocaleData.new(filename, 'expects it to return a hash, but does not')
+          end
+          data.each { |locale, d| store_translations(locale, d || {}) }
+        end
+","# Loads a single translations file by delegating to #load_rb or
+# #load_yml depending on the file extension and directly merges the
+# data to the existing translations. Raises I18n::UnknownFileType
+# for all other file extensions.
+"
+I18n::Backend::Base,load_rb,filename,"filename => String
+","(Hash<Symbol, Hash<Symbol, Hash<Symbol, Hash<Symbol, (Array<Symbol> or Proc)>>>> or Hash<Symbol, Hash<Symbol, Hash<Symbol, Hash<Symbol, Proc>>>> or Hash<Symbol, Hash<Symbol, Hash<Symbol, String>>>)","        def load_rb(filename)
+          eval(IO.read(filename), binding, filename)
+        end
+","# Loads a plain Ruby translations file. eval'ing the file must yield
+# a Hash containing translation data with locales as toplevel keys.
+"
+I18n::Backend::Base,load_yml,filename,"filename => String
+","(Hash<String, Hash<String, (Hash<String, (Array<String> or Hash<String, String>)> or Hash<String, (Hash<String, (Hash<String, (Hash<String, (Hash<String, String> or String)> or String)> or Hash<String, (Hash<String, String> or String)> or Hash<String, (Integer or String or true)>)> or Hash<String, (Integer or String or false)> or Hash<String, Hash<String, (Integer or String or false)>> or Hash<String, Hash<String, String>>)> or Hash<String, (Hash<String, String> or String)> or Hash<String, Hash<String, String>>)>> or Hash<String, Hash<String, Hash<String, String>>> or Hash<Symbol, Hash<Symbol, Hash<Symbol, String>>> or false)","        def load_yml(filename)
+          begin
+            YAML.load_file(filename)
+          rescue TypeError, ScriptError, StandardError => e
+            raise InvalidLocaleData.new(filename, e.inspect)
+          end
+        end
+","# Loads a YAML translations file. The data must have locales as
+# toplevel keys.
+"
+I18n::Backend::Base,load_json,filename,"filename => String
+","Hash<String, Hash<String, Hash<String, String>>>","        def load_json(filename)
+          begin
+            ::JSON.parse(File.read(filename))
+          rescue TypeError, StandardError => e
+            raise InvalidLocaleData.new(filename, e.inspect)
+          end
+        end
+","# Loads a JSON translations file. The data must have locales as
+# toplevel keys.
+"
+I18n::Backend::Base,translate_localization_format,"locale, object, format, options","locale => Symbol
+object => (Date or Time)
+format => String
+options => (Hash<%bot, %bot> or Hash<Symbol, (Date or String or Symbol or true)> or Hash<Symbol, (Date or Symbol or true)> or Hash<Symbol, (DateTime or String or Symbol or true)> or Hash<Symbol, (DateTime or Symbol or true)> or Hash<Symbol, (String or Symbol or Time or true)> or Hash<Symbol, (Symbol or Time or true)>)
+",String,"        def translate_localization_format(locale, object, format, options)
+          format.to_s.gsub(/%(|\^)[aAbBpP]/) do |match|
+            case match
+            when '%a' then I18n.t!(:""date.abbr_day_names"",                  :locale => locale, :format => format)[object.wday]
+            when '%^a' then I18n.t!(:""date.abbr_day_names"",                 :locale => locale, :format => format)[object.wday].upcase
+            when '%A' then I18n.t!(:""date.day_names"",                       :locale => locale, :format => format)[object.wday]
+            when '%^A' then I18n.t!(:""date.day_names"",                      :locale => locale, :format => format)[object.wday].upcase
+            when '%b' then I18n.t!(:""date.abbr_month_names"",                :locale => locale, :format => format)[object.mon]
+            when '%^b' then I18n.t!(:""date.abbr_month_names"",               :locale => locale, :format => format)[object.mon].upcase
+            when '%B' then I18n.t!(:""date.month_names"",                     :locale => locale, :format => format)[object.mon]
+            when '%^B' then I18n.t!(:""date.month_names"",                    :locale => locale, :format => format)[object.mon].upcase
+            when '%p' then I18n.t!(:""time.#{object.hour < 12 ? :am : :pm}"", :locale => locale, :format => format).upcase if object.respond_to? :hour
+            when '%P' then I18n.t!(:""time.#{object.hour < 12 ? :am : :pm}"", :locale => locale, :format => format).downcase if object.respond_to? :hour
+            end
+          end
+        rescue MissingTranslationData => e
+          e.message
+        end
+",""
+I18n::Backend::Base,pluralization_key,"entry, count","entry => (Hash<Symbol, String> or I18n::Backend::KeyValue::SubtreeProxy)
+count => Integer
+",Symbol,"        def pluralization_key(entry, count)
+          key = :zero if count == 0 && entry.has_key?(:zero)
+          key ||= count == 1 ? :one : :other
+        end
+",""
+I18n::Backend::CacheFile,load_file,filename,"filename => String
+","(Hash<Symbol, (Array<(Integer or String)> or Hash<String, Array<(Integer or String)>>)> or Hash<Symbol, Hash<Symbol, Array<(Integer or String)>>>)","      def load_file(filename)
+        initialized = !respond_to?(:initialized?) || initialized?
+        key = I18n::Backend::Flatten.escape_default_separator(normalized_path(filename))
+        old_mtime, old_digest = initialized && lookup(:i18n, key, :load_file)
+        return if (mtime = File.mtime(filename).to_i) == old_mtime ||
+                  (digest = Digest::SHA2.file(filename).hexdigest) == old_digest
+        super
+        store_translations(:i18n, load_file: { key => [mtime, digest] })
+      end
+","# Track loaded translation files in the `i18n.load_file` scope,
+# and skip loading the file if its contents are still up-to-date.
+"
+I18n::Backend::CacheFile,normalized_path,file,"file => String
+",String,"      def normalized_path(file)
+        return file unless path_roots
+        path = path_roots.find(&file.method(:start_with?)) ||
+               raise(InvalidLocaleData.new(file, 'outside expected path roots'))
+        file.sub(path, path_roots.index(path).to_s)
+      end
+","# Translate absolute filename to relative path for i18n key.
+"
+I18n::Backend::InterpolationCompiler::Compiler,compile_if_an_interpolation,string,"string => (Array<%bot> or Array<String> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<Symbol, String>> or String)
+","(Array<%bot> or Array<String> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<Symbol, String>> or String)","        def compile_if_an_interpolation(string)
+          if interpolated_str?(string)
+            string.instance_eval <<-RUBY_EVAL, __FILE__, __LINE__
+              def i18n_interpolate(v = {})
+                ""#{compiled_interpolation_body(string)}""
+              end
+            RUBY_EVAL
+          end
+
+          string
+        end
+",""
+I18n::Backend::InterpolationCompiler::Compiler,interpolated_str?,str,"str => (Array<%bot> or Array<String> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<Symbol, String>> or String)
+",(Integer or false),"        def interpolated_str?(str)
+          str.kind_of?(::String) && str =~ INTERPOLATION_SYNTAX_PATTERN
+        end
+",""
+I18n::Backend::InterpolationCompiler::Compiler,tokenize,str,"str => String
+",Array<String>,"        def tokenize(str)
+          str.split(TOKENIZER)
+        end
+","# tokenize(""foo %{bar} baz %%{buz}"") # => [""foo "", ""%{bar}"", "" baz "", ""%%{buz}""]
+"
+I18n::Backend::InterpolationCompiler::Compiler,compiled_interpolation_body,str,"str => String
+",String,"        def compiled_interpolation_body(str)
+          tokenize(str).map do |token|
+            (matchdata = token.match(INTERPOLATION_SYNTAX_PATTERN)) ? handle_interpolation_token(token, matchdata) : escape_plain_str(token)
+          end.join
+        end
+",""
+I18n::Backend::InterpolationCompiler::Compiler,handle_interpolation_token,"interpolation, matchdata","interpolation => String
+matchdata => MatchData
+",String,"        def handle_interpolation_token(interpolation, matchdata)
+          escaped, pattern, key = matchdata.values_at(1, 2, 3)
+          escaped ? pattern : compile_interpolation_token(key.to_sym)
+        end
+",""
+I18n::Backend::InterpolationCompiler::Compiler,compile_interpolation_token,key,"key => Symbol
+",String,"        def compile_interpolation_token(key)
+          ""\#{#{interpolate_or_raise_missing(key)}}""
+        end
+",""
+I18n::Backend::InterpolationCompiler::Compiler,interpolate_or_raise_missing,key,"key => Symbol
+",String,"        def interpolate_or_raise_missing(key)
+          escaped_key = escape_key_sym(key)
+          RESERVED_KEYS.include?(key) ? reserved_key(escaped_key) : interpolate_key(escaped_key)
+        end
+",""
+I18n::Backend::InterpolationCompiler::Compiler,interpolate_key,key,"key => String
+",String,"        def interpolate_key(key)
+          [direct_key(key), nil_key(key), missing_key(key)].join('||')
+        end
+",""
+I18n::Backend::InterpolationCompiler::Compiler,direct_key,key,"key => String
+",String,"        def direct_key(key)
+          ""((t = v[#{key}]) && t.respond_to?(:call) ? t.call : t)""
+        end
+",""
+I18n::Backend::InterpolationCompiler::Compiler,nil_key,key,"key => String
+",String,"        def nil_key(key)
+          ""(v.has_key?(#{key}) && '')""
+        end
+",""
+I18n::Backend::InterpolationCompiler::Compiler,missing_key,key,"key => String
+",String,"        def missing_key(key)
+          ""I18n.config.missing_interpolation_argument_handler.call(#{key}, v, self)""
+        end
+",""
+I18n::Backend::InterpolationCompiler::Compiler,reserved_key,key,"key => String
+",String,"        def reserved_key(key)
+          ""raise(ReservedInterpolationKey.new(#{key}, self))""
+        end
+",""
+I18n::Backend::InterpolationCompiler::Compiler,escape_plain_str,str,"str => String
+",String,"        def escape_plain_str(str)
+          str.gsub(/""|\\|#/) {|x| ""\\#{x}""}
+        end
+",""
+I18n::Backend::InterpolationCompiler::Compiler,escape_key_sym,key,"key => (String or Symbol)
+",String,"        def escape_key_sym(key)
+          # rely on Ruby to do all the hard work :)
+          key.to_sym.inspect
+        end
+",""
+I18n::Backend::InterpolationCompiler,interpolate,"locale, string, values","locale => (String or Symbol)
+string => (Array<String> or String)
+values => (Hash<%bot, %bot> or Hash<Symbol, Integer> or Hash<Symbol, Proc> or Hash<Symbol, String> or Hash<Symbol, nil>)
+",(Array<String> or String),"      def interpolate(locale, string, values)
+        if string.respond_to?(:i18n_interpolate)
+          string.i18n_interpolate(values)
+        elsif values
+          super
+        else
+          string
+        end
+      end
+",""
+I18n::Backend::InterpolationCompiler,compile_all_strings_in,data,"data => (Hash<String, String> or Hash<Symbol, Array<String>> or Hash<Symbol, String>)
+","(Hash<String, String> or Hash<Symbol, Array<String>> or Hash<Symbol, String>)","      def compile_all_strings_in(data)
+        data.each_value do |value|
+          Compiler.compile_if_an_interpolation(value)
+          compile_all_strings_in(value) if value.kind_of?(Hash)
+        end
+      end
+",""
+I18n::Backend::Transliterator,transliterate,"locale, string, replacement","locale => Symbol
+string => String
+replacement => nil
+",String,"      def transliterate(locale, string, replacement = nil)
+        @transliterators ||= {}
+        @transliterators[locale] ||= Transliterator.get I18n.t(:'i18n.transliterate.rule',
+          :locale => locale, :resolve => false, :default => {})
+        @transliterators[locale].transliterate(string, replacement)
+      end
+","# Given a locale and a UTF-8 string, return the locale's ASCII
+# approximation for the string.
+"
+I18n::Backend::Transliterator::ProcTransliterator,initialize,rule,"rule => Proc
+",Proc,"        def initialize(rule)
+          @rule = rule
+        end
+",""
+I18n::Backend::Transliterator::ProcTransliterator,transliterate,"string, replacement","string => String
+replacement => nil
+",String,"        def transliterate(string, replacement = nil)
+          @rule.call(string)
+        end
+",""
+I18n::Backend::Transliterator::HashTransliterator,initialize,rule,"rule => (Hash<%bot, %bot> or Hash<String, String> or Hash<Symbol, String>)
+","(Hash<%bot, %bot> or Hash<String, String> or Hash<Symbol, String>)","        def initialize(rule = nil)
+          @rule = rule
+          add_default_approximations
+          add rule if rule
+        end
+",""
+I18n::Backend::Transliterator::HashTransliterator,transliterate,"string, replacement","string => String
+replacement => String
+",String,"        def transliterate(string, replacement = nil)
+          replacement ||= DEFAULT_REPLACEMENT_CHAR
+          string.gsub(/[^\x00-\x7f]/u) do |char|
+            approximations[char] || replacement
+          end
+        end
+",""
+I18n::Backend::Transliterator::HashTransliterator,approximations,"","","(Hash<%bot, %bot> or Hash<String, String>)","        def approximations
+          @approximations ||= {}
+        end
+",""
+I18n::Backend::Transliterator::HashTransliterator,add_default_approximations,"","","Hash<String, String>","        def add_default_approximations
+          DEFAULT_APPROXIMATIONS.each do |key, value|
+            approximations[key] = value
+          end
+        end
+",""
+I18n::Backend::Transliterator::HashTransliterator,add,hash,"hash => (Hash<%bot, %bot> or Hash<String, String> or Hash<Symbol, String>)
+","(Hash<%bot, %bot> or Hash<String, String> or Hash<Symbol, String>)","        def add(hash)
+          hash.each do |key, value|
+            approximations[key.to_s] = value.to_s
+          end
+        end
+","# Add transliteration rules to the approximations hash.
+"
+[s]I18n,fallbacks,"","","(Hash<%bot, %bot> or Hash<Symbol, Array<Symbol>>)","    def fallbacks
+      @@fallbacks ||= I18n::Locale::Fallbacks.new
+    end
+","# Returns the current fallbacks implementation. Defaults to +I18n::Locale::Fallbacks+.
+"
+I18n::Backend::Fallbacks,extract_non_symbol_default!,options,"options => (Hash<Symbol, (Array<%bot> or Array<Symbol> or Integer)> or Hash<Symbol, (Array<%bot> or Integer)> or Hash<Symbol, (Array<%bot> or Proc)> or Hash<Symbol, (Array<%bot> or String or true)> or Hash<Symbol, (Array<%bot> or String)> or Hash<Symbol, (Array<%bot> or Symbol)> or Hash<Symbol, (Array<%bot> or false)> or Hash<Symbol, (Array<%bot> or true)> or Hash<Symbol, (Array<Symbol> or Integer)> or Hash<Symbol, (Array<Symbol> or String)> or Hash<Symbol, (Integer or Symbol)> or Hash<Symbol, (String or Symbol)> or Hash<Symbol, Array<%bot>> or Hash<Symbol, Array<Symbol>> or Hash<Symbol, Array<false>> or Hash<Symbol, Symbol>)
+","(Hash<%bot, %bot> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<Symbol, String>> or Hash<Symbol, String> or Proc or String or false)","      def extract_non_symbol_default!(options)
+        defaults = [options[:default]].flatten
+        first_non_symbol_default = defaults.detect{|default| !default.is_a?(Symbol)}
+        if first_non_symbol_default
+          options[:default] = defaults[0, defaults.index(first_non_symbol_default)]
+        end
+        return first_non_symbol_default
+      end
+",""
+I18n::Backend::Fallbacks,exists?,"locale, key","locale => Symbol
+key => Symbol
+",(false or true),"      def exists?(locale, key)
+        I18n.fallbacks[locale].each do |fallback|
+          begin
+            return true if super(fallback, key)
+          rescue I18n::InvalidLocale
+            # we do nothing when the locale is invalid, as this is a fallback anyways.
+          end
+        end
+
+        false
+      end
+",""
+I18n::Backend::Pluralization,pluralize,"locale, entry, count","locale => Symbol
+entry => (Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or Hash<Symbol, nil> or String)
+count => (Float or Integer)
+","(Hash<Symbol, (Hash<Symbol, String> or String)> or String)","      def pluralize(locale, entry, count)
+        return entry unless entry.is_a?(Hash) && count
+
+        pluralizer = pluralizer(locale)
+        if pluralizer.respond_to?(:call)
+          key = count == 0 && entry.has_key?(:zero) ? :zero : pluralizer.call(count)
+          raise InvalidPluralizationData.new(entry, count, key) unless entry.has_key?(key)
+          entry[key]
+        else
+          super
+        end
+      end
+","# Overwrites the Base backend translate method so that it will check the
+# translation meta data space (:i18n) for a locale specific pluralization
+# rule and use it to pluralize the given entry. I.e. the library expects
+# pluralization rules to be stored at I18n.t(:'i18n.plural.rule')
+#
+# Pluralization rules are expected to respond to #call(count) and
+# return a pluralization key. Valid keys depend on the translation data
+# hash (entry) but it is generally recommended to follow CLDR's style,
+# i.e., return one of the keys :zero, :one, :few, :many, :other.
+#
+# The :zero key is always picked directly when count equals 0 AND the
+# translation data has the key :zero. This way translators are free to
+# either pick a special :zero translation even for languages where the
+# pluralizer does not return a :zero key.
+"
+I18n::Backend::Pluralization,pluralizers,"","","(Hash<%bot, %bot> or Hash<Symbol, Proc> or Hash<Symbol, String>)","        def pluralizers
+          @pluralizers ||= {}
+        end
+",""
+I18n::Backend::Pluralization,pluralizer,locale,"locale => Symbol
+",(Proc or String),"        def pluralizer(locale)
+          pluralizers[locale] ||= I18n.t(:'i18n.plural.rule', :locale => locale, :resolve => false)
+        end
+",""
+[s]I18n,cache_store,"","",ActiveSupport::Cache::MemoryStore,"    def cache_store
+      @@cache_store
+    end
+",""
+[s]I18n,cache_store=,store,"store => ActiveSupport::Cache::MemoryStore
+",ActiveSupport::Cache::MemoryStore,"    def cache_store=(store)
+      @@cache_store = store
+    end
+",""
+[s]I18n,cache_namespace,"","",String,"    def cache_namespace
+      @@cache_namespace
+    end
+",""
+[s]I18n,cache_namespace=,namespace,"namespace => String
+",String,"    def cache_namespace=(namespace)
+      @@cache_namespace = namespace
+    end
+",""
+[s]I18n,cache_key_digest,"","",Digest::MD5,"    def cache_key_digest
+      @@cache_key_digest
+    end
+",""
+[s]I18n,cache_key_digest=,key_digest,"key_digest => Digest::MD5
+",Digest::MD5,"    def cache_key_digest=(key_digest)
+      @@cache_key_digest = key_digest
+    end
+",""
+[s]I18n,perform_caching?,"","",true,"    def perform_caching?
+      !cache_store.nil?
+    end
+",""
+I18n::Backend::Cache,translate,"locale, key, options","locale => Symbol
+key => (String or Symbol)
+options => (Hash<%bot, %bot> or Hash<Symbol, (Array<Symbol> or true)> or Hash<Symbol, (Date or true)> or Hash<Symbol, (DateTime or true)> or Hash<Symbol, (Integer or true)> or Hash<Symbol, (Proc or true)> or Hash<Symbol, (String or true)> or Hash<Symbol, (Symbol or true)> or Hash<Symbol, (Time or true)> or Hash<Symbol, (false or true)> or Hash<Symbol, (nil or true)> or Hash<Symbol, String> or Hash<Symbol, true>)
+","(Array<String> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or Proc or String or false or true)","      def translate(locale, key, options = EMPTY_HASH)
+        I18n.perform_caching? ? fetch(cache_key(locale, key, options)) { super } : super
+      end
+",""
+I18n::Backend::Cache,fetch,"cache_key, block","cache_key => String
+block => nil
+","(Array<String> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or Proc or String or false or true)","        def fetch(cache_key, &block)
+          result = _fetch(cache_key, &block)
+          throw(:exception, result) if result.is_a?(MissingTranslation)
+          result = result.dup if result.frozen? rescue result
+          result
+        end
+",""
+I18n::Backend::Cache,_fetch,"cache_key, block","cache_key => String
+block => nil
+","(Array<String> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or I18n::MissingTranslation or Proc or String or false or true)","        def _fetch(cache_key, &block)
+          result = I18n.cache_store.read(cache_key)
+          return result unless result.nil?
+          result = catch(:exception, &block)
+          I18n.cache_store.write(cache_key, result) unless result.is_a?(Proc)
+          result
+        end
+",""
+I18n::Backend::Cache,cache_key,"locale, key, options","locale => Symbol
+key => (String or Symbol)
+options => (Hash<%bot, %bot> or Hash<Symbol, (Array<Symbol> or true)> or Hash<Symbol, (Date or String or true)> or Hash<Symbol, (Date or true)> or Hash<Symbol, (DateTime or String or true)> or Hash<Symbol, (DateTime or true)> or Hash<Symbol, (Integer or true)> or Hash<Symbol, (Proc or true)> or Hash<Symbol, (String or Time or true)> or Hash<Symbol, (String or true)> or Hash<Symbol, (Symbol or true)> or Hash<Symbol, (Time or true)> or Hash<Symbol, (false or true)> or Hash<Symbol, (nil or true)> or Hash<Symbol, Integer> or Hash<Symbol, true>)
+",String,"        def cache_key(locale, key, options)
+          # This assumes that only simple, native Ruby values are passed to I18n.translate.
+          ""i18n/#{I18n.cache_namespace}/#{locale}/#{digest_item(key)}/#{digest_item(options)}""
+        end
+",""
+I18n::Backend::Cache,digest_item,key,"key => (Hash<%bot, %bot> or Hash<Symbol, (Array<Symbol> or true)> or Hash<Symbol, (Date or String or true)> or Hash<Symbol, (Date or true)> or Hash<Symbol, (DateTime or String or true)> or Hash<Symbol, (DateTime or true)> or Hash<Symbol, (Integer or true)> or Hash<Symbol, (Proc or true)> or Hash<Symbol, (String or Time or true)> or Hash<Symbol, (String or true)> or Hash<Symbol, (Symbol or true)> or Hash<Symbol, (Time or true)> or Hash<Symbol, (false or true)> or Hash<Symbol, (nil or true)> or Hash<Symbol, Integer> or Hash<Symbol, true> or String or Symbol)
+",(Integer or String),"        def digest_item(key)
+          I18n.cache_key_digest ? I18n.cache_key_digest.hexdigest(key.to_s) : key.to_s.hash
+        end
+",""
+I18n::Backend::Flatten,normalize_flat_keys,"locale, key, scope, separator","locale => (String or Symbol)
+key => (Integer or String or Symbol)
+scope => (Array<%bot> or Array<Symbol> or Symbol)
+separator => String
+",String,"      def normalize_flat_keys(locale, key, scope, separator)
+        key = I18n::Backend::Flatten.normalize_flat_keys(locale, key, scope, separator)
+        resolve_link(locale, key)
+      end
+","# Shortcut to I18n::Backend::Flatten.normalize_flat_keys
+# and then resolve_links.
+"
+I18n::Backend::Flatten,links,"","",Concurrent::Map,"      def links
+        @links ||= I18n.new_double_nested_cache
+      end
+","# Store flattened links.
+"
+I18n::Backend::Flatten,flatten_keys,"hash, escape, prev_key, block","hash => (Hash<Integer, String> or Hash<String, Array<(Integer or String)>> or Hash<String, Hash<String, String>> or Hash<String, String> or Hash<Symbol, (Array<String> or Hash<String, String> or Hash<Symbol, String> or String or false or true)> or Hash<Symbol, (Array<String> or Hash<Symbol, String>)> or Hash<Symbol, (Hash<Symbol, (Hash<Symbol, String> or String)> or String)> or Hash<Symbol, (Hash<Symbol, (Hash<Symbol, String> or String)> or Symbol)> or Hash<Symbol, (Hash<Symbol, (String or Symbol)> or String)> or Hash<Symbol, (Hash<Symbol, Hash<Symbol, Hash<Symbol, String>>> or Hash<Symbol, Hash<Symbol, Symbol>>)> or Hash<Symbol, (Hash<Symbol, String> or Hash<Symbol, Symbol>)> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, (Hash<Symbol, String> or Symbol)> or Hash<Symbol, (Hash<Symbol, Symbol> or String)> or Hash<Symbol, (String or Symbol)> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<String, Array<(Integer or String)>>> or Hash<Symbol, Hash<Symbol, (Array<String> or Hash<Symbol, String>)>> or Hash<Symbol, Hash<Symbol, (Hash<Symbol, String> or String)>> or Hash<Symbol, Hash<Symbol, Array<String>>> or Hash<Symbol, Hash<Symbol, Hash<Symbol, String>>> or Hash<Symbol, Hash<Symbol, String>> or Hash<Symbol, Hash<Symbol, Symbol>> or Hash<Symbol, String> or Hash<Symbol, Symbol> or Hash<Symbol, nil>)
+escape => (false or true)
+prev_key => Symbol
+block => nil
+","(Hash<Integer, String> or Hash<String, Array<(Integer or String)>> or Hash<String, Hash<String, String>> or Hash<String, String> or Hash<Symbol, (Array<String> or Hash<String, String> or Hash<Symbol, String> or String or false or true)> or Hash<Symbol, (Array<String> or Hash<Symbol, String>)> or Hash<Symbol, (Hash<Symbol, (Hash<Symbol, String> or String)> or String)> or Hash<Symbol, (Hash<Symbol, (Hash<Symbol, String> or String)> or Symbol)> or Hash<Symbol, (Hash<Symbol, (String or Symbol)> or String)> or Hash<Symbol, (Hash<Symbol, Hash<Symbol, Hash<Symbol, String>>> or Hash<Symbol, Hash<Symbol, Symbol>>)> or Hash<Symbol, (Hash<Symbol, String> or Hash<Symbol, Symbol>)> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, (Hash<Symbol, String> or Symbol)> or Hash<Symbol, (Hash<Symbol, Symbol> or String)> or Hash<Symbol, (String or Symbol)> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<String, Array<(Integer or String)>>> or Hash<Symbol, Hash<Symbol, (Array<String> or Hash<Symbol, String>)>> or Hash<Symbol, Hash<Symbol, (Hash<Symbol, String> or String)>> or Hash<Symbol, Hash<Symbol, Array<String>>> or Hash<Symbol, Hash<Symbol, Hash<Symbol, String>>> or Hash<Symbol, Hash<Symbol, String>> or Hash<Symbol, Hash<Symbol, Symbol>> or Hash<Symbol, String> or Hash<Symbol, Symbol> or Hash<Symbol, nil>)","      def flatten_keys(hash, escape, prev_key=nil, &block)
+        hash.each_pair do |key, value|
+          key = escape_default_separator(key) if escape
+          curr_key = [prev_key, key].compact.join(FLATTEN_SEPARATOR).to_sym
+          yield curr_key, value
+          flatten_keys(value, escape, curr_key, &block) if value.is_a?(Hash)
+        end
+      end
+","# Flatten keys for nested Hashes by chaining up keys:
+#
+#   >> { ""a"" => { ""b"" => { ""c"" => ""d"", ""e"" => ""f"" }, ""g"" => ""h"" }, ""i"" => ""j""}.wind
+#   => { ""a.b.c"" => ""d"", ""a.b.e"" => ""f"", ""a.g"" => ""h"", ""i"" => ""j"" }
+#
+"
+I18n::Backend::Flatten,flatten_translations,"locale, data, escape, subtree","locale => (String or Symbol)
+data => (Hash<Integer, String> or Hash<String, Hash<String, String>> or Hash<String, String> or Hash<Symbol, (Array<String> or Hash<String, String> or Hash<Symbol, String> or String or false or true)> or Hash<Symbol, (Hash<Symbol, (Hash<Symbol, String> or String)> or String)> or Hash<Symbol, (Hash<Symbol, (Hash<Symbol, String> or String)> or Symbol)> or Hash<Symbol, (Hash<Symbol, (String or Symbol)> or String)> or Hash<Symbol, (Hash<Symbol, Hash<Symbol, Hash<Symbol, String>>> or Hash<Symbol, Hash<Symbol, Symbol>>)> or Hash<Symbol, (Hash<Symbol, String> or Hash<Symbol, Symbol>)> or Hash<Symbol, (Hash<Symbol, String> or Symbol)> or Hash<Symbol, (Hash<Symbol, Symbol> or String)> or Hash<Symbol, (String or Symbol)> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<String, Array<(Integer or String)>>> or Hash<Symbol, Hash<Symbol, (Array<String> or Hash<Symbol, String>)>> or Hash<Symbol, Hash<Symbol, (Hash<Symbol, String> or String)>> or Hash<Symbol, Hash<Symbol, Array<String>>> or Hash<Symbol, Hash<Symbol, String>> or Hash<Symbol, String> or Hash<Symbol, nil>)
+escape => (false or true)
+subtree => (false or true)
+","(Hash<Symbol, (Array<(Integer or String)> or Hash<String, Array<(Integer or String)>>)> or Hash<Symbol, (Array<String> or Hash<String, String> or Hash<Symbol, String> or String or false or true)> or Hash<Symbol, (Array<String> or Hash<Symbol, (Array<String> or Hash<Symbol, String>)> or Hash<Symbol, String> or String)> or Hash<Symbol, (Array<String> or Hash<Symbol, Array<String>>)> or Hash<Symbol, (Hash<String, String> or String)> or Hash<Symbol, (Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or String or Symbol)> or Hash<Symbol, (Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or String)> or Hash<Symbol, (Hash<Symbol, (String or Symbol)> or String or Symbol)> or Hash<Symbol, (Hash<Symbol, Hash<Symbol, Hash<Symbol, String>>> or Hash<Symbol, Hash<Symbol, String>> or Hash<Symbol, Hash<Symbol, Symbol>> or Hash<Symbol, String> or Hash<Symbol, Symbol> or String or Symbol)> or Hash<Symbol, (Hash<Symbol, String> or Hash<Symbol, Symbol> or String or Symbol)> or Hash<Symbol, (Hash<Symbol, String> or String or Symbol)> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, (Hash<Symbol, Symbol> or String or Symbol)> or Hash<Symbol, (String or Symbol)> or Hash<Symbol, Array<String>> or Hash<Symbol, String> or Hash<Symbol, nil>)","      def flatten_translations(locale, data, escape, subtree)
+        hash = {}
+        flatten_keys(data, escape) do |key, value|
+          if value.is_a?(Hash)
+            hash[key] = value if subtree
+          else
+            store_link(locale, key, value) if value.is_a?(Symbol)
+            hash[key] = value
+          end
+        end
+        hash
+      end
+","# Receives a hash of translations (where the key is a locale and
+# the value is another hash) and return a hash with all
+# translations flattened.
+#
+# Nested hashes are included in the flattened hash just if subtree
+# is true and Symbols are automatically stored as links.
+"
+I18n::Backend::Flatten,store_link,"locale, key, link","locale => (String or Symbol)
+key => (String or Symbol)
+link => (String or Symbol)
+",String,"        def store_link(locale, key, link)
+          links[locale.to_sym][key.to_s] = link.to_s
+        end
+",""
+I18n::Backend::Flatten,resolve_link,"locale, key","locale => (String or Symbol)
+key => String
+",String,"        def resolve_link(locale, key)
+          key, locale = key.to_s, locale.to_sym
+          links = self.links[locale]
+
+          if links.key?(key)
+            links[key]
+          elsif link = find_link(locale, key)
+            store_link(locale, key, key.gsub(*link))
+          else
+            key
+          end
+        end
+",""
+I18n::Backend::Flatten,find_link,"locale, key","locale => Symbol
+key => String
+",Array<String>,"        def find_link(locale, key) #:nodoc:
+          links[locale].each_pair do |from, to|
+            return [from, to] if key[0, from.length] == from
+          end && nil
+        end
+",""
+I18n::Backend::Flatten,escape_default_separator,key,"key => (Integer or String or Symbol)
+",String,"        def escape_default_separator(key) #:nodoc:
+          I18n::Backend::Flatten.escape_default_separator(key)
+        end
+",""
+[s]I18n::Backend::Metadata,included,base,"base => Class
+",Symbol,"        def included(base)
+          Object.class_eval do
+            def translation_metadata
+              unless self.frozen?
+                @translation_metadata ||= {}
+              else
+                {}
+              end
+            end
+
+            def translation_metadata=(translation_metadata)
+              @translation_metadata = translation_metadata unless self.frozen?
+            end
+          end unless Object.method_defined?(:translation_metadata)
+        end
+",""
+I18n::Backend::Metadata,translate,"locale, key, options","locale => Symbol
+key => (String or Symbol)
+options => (Hash<%bot, %bot> or Hash<Symbol, (Array<Symbol> or true)> or Hash<Symbol, (Date or true)> or Hash<Symbol, (DateTime or true)> or Hash<Symbol, (Hash<Symbol, String> or Integer)> or Hash<Symbol, (Integer or String)> or Hash<Symbol, (Integer or true)> or Hash<Symbol, (Proc or true)> or Hash<Symbol, (String or true)> or Hash<Symbol, (Symbol or true)> or Hash<Symbol, (Time or true)> or Hash<Symbol, (false or true)> or Hash<Symbol, (nil or true)> or Hash<Symbol, String> or Hash<Symbol, true>)
+","(Array<String> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or Proc or String or false or true)","      def translate(locale, key, options = EMPTY_HASH)
+        metadata = {
+          :locale    => locale,
+          :key       => key,
+          :scope     => options[:scope],
+          :default   => options[:default],
+          :separator => options[:separator],
+          :values    => options.reject { |name, _value| RESERVED_KEYS.include?(name) }
+        }
+        with_metadata(metadata) { super }
+      end
+",""
+I18n::Backend::Metadata,interpolate,"locale, entry, values","locale => Symbol
+entry => (Array<String> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or Proc or String or false or true)
+values => (Hash<%bot, %bot> or Hash<Symbol, Integer> or Hash<Symbol, String>)
+","(Array<String> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or Proc or String or false or true)","      def interpolate(locale, entry, values = EMPTY_HASH)
+        metadata = entry.translation_metadata.merge(:original => entry)
+        with_metadata(metadata) { super }
+      end
+",""
+I18n::Backend::Metadata,pluralize,"locale, entry, count","locale => Symbol
+entry => (Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or String)
+count => Integer
+","(Hash<Symbol, (Hash<Symbol, String> or String)> or String)","      def pluralize(locale, entry, count)
+        with_metadata(:count => count) { super }
+      end
+",""
+I18n::Backend::Metadata,with_metadata,"metadata, block","metadata => (Hash<Symbol, (Array<Symbol> or Hash<%bot, %bot> or Symbol)> or Hash<Symbol, (Hash<%bot, %bot> or String or Symbol)> or Hash<Symbol, (Hash<%bot, %bot> or Symbol)> or Hash<Symbol, (Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, Integer> or Integer or Symbol)> or Hash<Symbol, (Hash<Symbol, (Hash<Symbol, String> or String)> or Integer)> or Hash<Symbol, (Hash<Symbol, Integer> or Hash<Symbol, String> or Symbol)> or Hash<Symbol, (Hash<Symbol, Integer> or String or Symbol)> or Hash<Symbol, (Hash<Symbol, Integer> or Symbol)> or Hash<Symbol, (Hash<Symbol, Proc> or Symbol)> or Hash<Symbol, (Hash<Symbol, String> or String or Symbol)> or Hash<Symbol, (Hash<Symbol, String> or Symbol)> or Hash<Symbol, (Hash<Symbol, Symbol> or Symbol)> or Hash<Symbol, (Hash<Symbol, nil> or Symbol)> or Hash<Symbol, (Integer or String)> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<Symbol, String>> or Hash<Symbol, Integer> or Hash<Symbol, Proc> or Hash<Symbol, String> or Hash<Symbol, false> or Hash<Symbol, true>)
+block => nil
+","(Array<String> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or Proc or String or false or true)","        def with_metadata(metadata, &block)
+          result = yield
+          result.translation_metadata = result.translation_metadata.merge(metadata) if result
+          result
+        end
+",""
+I18n::Backend::KeyValue::Implementation,initialize,"store, subtrees","store => Hash<%bot, %bot>
+subtrees => (false or true)
+","(Array<(Hash<%bot, %bot> or false)> or Array<(Hash<%bot, %bot> or true)>)","        def initialize(store, subtrees=true)
+          @store, @subtrees = store, subtrees
+        end
+",""
+I18n::Backend::KeyValue::Implementation,initialized?,"","",true,"        def initialized?
+          !@store.nil?
+        end
+",""
+I18n::Backend::KeyValue::Implementation,available_locales,"","",Array<Symbol>,"        def available_locales
+          locales = @store.keys.map { |k| k =~ /\./; $` }
+          locales.uniq!
+          locales.compact!
+          locales.map! { |k| k.to_sym }
+          locales
+        end
+",""
+I18n::Backend::KeyValue::Implementation,translations,"","","Hash<Symbol, Hash<Symbol, Hash<Symbol, String>>>","        def translations
+          @translations = @store.keys.clone.map do |main_key|
+            main_value = JSON.decode(@store[main_key])
+            main_key.to_s.split(""."").reverse.inject(main_value) do |value, key|
+              {key.to_sym => value}
+            end
+          end.inject{|hash, elem| hash.deep_merge!(elem)}.deep_symbolize_keys
+        end
+","# Queries the translations from the key-value store and converts
+# them into a hash such as the one returned from loading the
+# haml files
+"
+I18n::Backend::KeyValue::Implementation,subtrees?,"","",(false or true),"        def subtrees?
+          @subtrees
+        end
+",""
+I18n::Backend::KeyValue::Implementation,pluralize,"locale, entry, count","locale => Symbol
+entry => (Hash<Symbol, String> or I18n::Backend::KeyValue::SubtreeProxy or String)
+count => Integer
+",String,"        def pluralize(locale, entry, count)
+          if subtrees?
+            super
+          else
+            return entry unless entry.is_a?(Hash)
+            key = pluralization_key(entry, count)
+            entry[key]
+          end
+        end
+",""
+I18n::Backend::KeyValue::SubtreeProxy,initialize,"master_key, store","master_key => String
+store => Hash<String, String>
+",nil,"        def initialize(master_key, store)
+          @master_key = master_key
+          @store = store
+          @subtree = nil
+        end
+",""
+I18n::Backend::KeyValue::SubtreeProxy,[],key,"key => Symbol
+",String,"        def [](key)
+          unless @subtree && value = @subtree[key]
+            value = @store[""#{@master_key}.#{key}""]
+            if value
+              value = JSON.decode(value)
+              (@subtree ||= {})[key] = value
+            end
+          end
+          value
+        end
+",""
+I18n::Backend::KeyValue::SubtreeProxy,is_a?,klass,"klass => Class
+",(false or true),"        def is_a?(klass)
+          Hash == klass || super
+        end
+",""
+I18n::Backend::KeyValue::SubtreeProxy,nil?,"","",true,"        def nil?
+          @subtree.nil?
+        end
+",""
+I18n::Backend::Gettext::PoData,set_comment,"msgid_or_sym, comment","msgid_or_sym => String
+comment => String
+",nil,"        def set_comment(msgid_or_sym, comment)
+          # ignore
+        end
+",""
+I18n::Backend::Gettext,load_po,filename,"filename => String
+","Hash<Symbol, Hash<String, (Hash<String, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or String)>>","        def load_po(filename)
+          locale = ::File.basename(filename, '.po').to_sym
+          data = normalize(locale, parse(filename))
+          { locale => data }
+        end
+",""
+I18n::Backend::Gettext,parse,filename,"filename => String
+","Hash<String, String>","        def parse(filename)
+          GetText::PoParser.new.parse(::File.read(filename), PoData.new)
+        end
+",""
+I18n::Backend::Gettext,normalize,"locale, data","locale => Symbol
+data => Hash<String, String>
+","Hash<String, (Hash<String, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or String)>","        def normalize(locale, data)
+          data.inject({}) do |result, (key, value)|
+            unless key.nil? || key.empty?
+              key = key.gsub(I18n::Gettext::CONTEXT_SEPARATOR, '|')
+              key, value = normalize_pluralization(locale, key, value) if key.index(""\000"")
+
+              parts = key.split('|').reverse
+              normalized = parts.inject({}) do |_normalized, part|
+                { part => _normalized.empty? ? value : _normalized }
+              end
+
+              result.deep_merge!(normalized)
+            end
+            result
+          end
+        end
+",""
+I18n::Backend::Gettext,normalize_pluralization,"locale, key, value","locale => Symbol
+key => String
+value => String
+","Array<(Hash<Symbol, String> or String)>","        def normalize_pluralization(locale, key, value)
+          # FIXME po_parser includes \000 chars that can not be turned into Symbols
+          key = key.gsub(""\000"", I18n::Gettext::PLURAL_SEPARATOR).split(I18n::Gettext::PLURAL_SEPARATOR).first
+
+          keys = I18n::Gettext.plural_keys(locale)
+          values = value.split(""\000"")
+          raise ""invalid number of plurals: #{values.size}, keys: #{keys.inspect} on #{locale} locale for msgid #{key.inspect} with values #{values.inspect}"" if values.size != keys.size
+
+          result = {}
+          values.each_with_index { |_value, ix| result[keys[ix]] = _value }
+          [key, result]
+        end
+",""
+I18n::Backend::Memoize,available_locales,"","",(Array<%bot> or Array<Symbol>),"      def available_locales
+        @memoized_locales ||= super
+      end
+",""
+I18n::Backend::Memoize,reload!,"","",(nil or true),"      def reload!
+        reset_memoizations!
+        super
+      end
+",""
+I18n::Backend::Memoize,eager_load!,"","",true,"      def eager_load!
+        memoized_lookup
+        available_locales
+        super
+      end
+",""
+I18n::Backend::Memoize,memoized_lookup,"","",Concurrent::Map,"        def memoized_lookup
+          @memoized_lookup ||= I18n.new_double_nested_cache
+        end
+",""
+I18n::Backend::Memoize,reset_memoizations!,locale,"locale => (String or Symbol)
+",Concurrent::Map,"        def reset_memoizations!(locale=nil)
+          @memoized_locales = nil
+          (locale ? memoized_lookup[locale.to_sym] : memoized_lookup).clear
+        end
+",""
+I18n::Gettext::Helpers,N_,msgsid,"msgsid => String
+",String,"      def N_(msgsid)
+        msgsid
+      end
+","# Makes dynamic translation messages readable for the gettext parser.
+# <tt>_(fruit)</tt> cannot be understood by the gettext parser. To help the parser find all your translations,
+# you can add <tt>fruit = N_(""Apple"")</tt> which does not translate, but tells the parser: ""Apple"" needs translation.
+# * msgid: the message id.
+# * Returns: msgid.
+"
+I18n::Gettext::Helpers,sgettext,"msgid, separator","msgid => String
+separator => String
+",String,"      def sgettext(msgid, separator = '|')
+        scope, msgid = I18n::Gettext.extract_scope(msgid, separator)
+        I18n.t(msgid, :scope => scope, :default => msgid, :separator => separator)
+      end
+",""
+I18n::Gettext::Helpers,pgettext,"msgctxt, msgid","msgctxt => String
+msgid => String
+",String,"      def pgettext(msgctxt, msgid)
+        separator = I18n::Gettext::CONTEXT_SEPARATOR
+        sgettext([msgctxt, msgid].join(separator), separator)
+      end
+",""
+I18n::Gettext::Helpers,ngettext,"msgid, msgid_plural, n","msgid => (Array<String> or String)
+msgid_plural => (Integer or String)
+n => Integer
+",String,"      def ngettext(msgid, msgid_plural, n = 1)
+        nsgettext(msgid, msgid_plural, n)
+      end
+",""
+I18n::Gettext::Helpers,nsgettext,"msgid, msgid_plural, n, separator","msgid => (Array<String> or String)
+msgid_plural => (Integer or String)
+n => Integer
+separator => String
+",String,"      def nsgettext(msgid, msgid_plural, n = 1, separator = '|')
+        if msgid.is_a?(Array)
+          msgid, msgid_plural, n, separator = msgid[0], msgid[1], msgid_plural, n
+          separator = '|' unless separator.is_a?(::String)
+        end
+
+        scope, msgid = I18n::Gettext.extract_scope(msgid, separator)
+        default = { :one => msgid, :other => msgid_plural }
+        I18n.t(msgid, :default => default, :count => n, :scope => scope, :separator => separator)
+      end
+","# Method signatures:
+#   nsgettext('Fruits|apple', 'apples', 2)
+#   nsgettext(['Fruits|apple', 'apples'], 2)
+"
+I18n::Gettext::Helpers,npgettext,"msgctxt, msgid, msgid_plural, n","msgctxt => String
+msgid => (Array<String> or String)
+msgid_plural => (Integer or String)
+n => Integer
+",String,"      def npgettext(msgctxt, msgid, msgid_plural, n = 1)
+        separator = I18n::Gettext::CONTEXT_SEPARATOR
+
+        if msgid.is_a?(Array)
+          msgid_plural, msgid, n = msgid[1], [msgctxt, msgid[0]].join(separator), msgid_plural
+        else
+          msgid = [msgctxt, msgid].join(separator)
+        end
+
+        nsgettext(msgid, msgid_plural, n, separator)
+      end
+","# Method signatures:
+#   npgettext('Fruits', 'apple', 'apples', 2)
+#   npgettext('Fruits', ['apple', 'apples'], 2)
+"
+[s]I18n,interpolate,"string, values","string => String
+values => (Hash<Symbol, (Float or Integer)> or Hash<Symbol, (Float or String)> or Hash<Symbol, Float> or Hash<Symbol, Integer> or Hash<Symbol, Proc> or Hash<Symbol, String> or Hash<Symbol, nil>)
+",String,"    def interpolate(string, values)
+      raise ReservedInterpolationKey.new($1.to_sym, string) if string =~ RESERVED_KEYS_PATTERN
+      raise ArgumentError.new('Interpolation values must be a Hash.') unless values.kind_of?(Hash)
+      interpolate_hash(string, values)
+    end
+","# Return String or raises MissingInterpolationArgument exception.
+# Missing argument's logic is handled by I18n.config.missing_interpolation_argument_handler.
+"
+[s]I18n,interpolate_hash,"string, values","string => String
+values => (Hash<Symbol, (Float or Integer)> or Hash<Symbol, (Float or String)> or Hash<Symbol, Float> or Hash<Symbol, Integer> or Hash<Symbol, Proc> or Hash<Symbol, String> or Hash<Symbol, nil>)
+",String,"    def interpolate_hash(string, values)
+      string.gsub(Regexp.union(config.interpolation_patterns)) do |match|
+        if match == '%%'
+          '%'
+        else
+          key = ($1 || $2 || match.tr(""%{}"", """")).to_sym
+          value = if values.key?(key)
+                    values[key]
+                  else
+                    config.missing_interpolation_argument_handler.call(key, values, string)
+                  end
+          value = value.call(values) if value.respond_to?(:call)
+          $3 ? sprintf(""%#{$3}"", value) : value
+        end
+      end
+    end
+",""
+[s]I18n::Locale::Tag,implementation,"","",Class,"        def implementation
+          @@implementation ||= Simple
+        end
+","# Returns the current locale tag implementation. Defaults to +I18n::Locale::Tag::Simple+.
+"
+[s]I18n::Locale::Tag,tag,tag,"tag => Symbol
+",I18n::Locale::Tag::Simple,"        def tag(tag)
+          implementation.tag(tag)
+        end
+","# Factory method for locale tags. Delegates to the current locale tag implementation.
+"
+I18n::Locale::Fallbacks,initialize,mappings,"mappings => (Array<%bot> or Array<RDL::Type::NominalType>)
+",(Array<%bot> or Array<Symbol>),"      def initialize(*mappings)
+        @map = {}
+        map(mappings.pop) if mappings.last.is_a?(Hash)
+        self.defaults = mappings.empty? ? [] : mappings
+      end
+",""
+I18n::Locale::Fallbacks,defaults=,defaults,"defaults => (Array<%bot> or Array<Symbol>)
+",(Array<%bot> or Array<Symbol>),"      def defaults=(defaults)
+        @defaults = defaults.map { |default| compute(default, false) }.flatten
+      end
+",""
+I18n::Locale::Fallbacks,[],locale,"locale => (String or Symbol)
+",Array<Symbol>,"      def [](locale)
+        raise InvalidLocale.new(locale) if locale.nil?
+        raise Disabled.new('fallback#[]') if locale == false
+        locale = locale.to_sym
+        super || store(locale, compute(locale))
+      end
+",""
+I18n::Locale::Fallbacks,map,mappings,"mappings => (Hash<Symbol, Array<Symbol>> or Hash<Symbol, Symbol>)
+","(Hash<Symbol, Array<Symbol>> or Hash<Symbol, Symbol>)","      def map(mappings)
+        mappings.each do |from, to|
+          from, to = from.to_sym, Array(to)
+          to.each do |_to|
+            @map[from] ||= []
+            @map[from] << _to.to_sym
+          end
+        end
+      end
+",""
+I18n::Locale::Fallbacks,compute,"tags, include_defaults, exclude","tags => (Array<Symbol> or Symbol)
+include_defaults => (false or true)
+exclude => (Array<%bot> or Array<Symbol>)
+",(Array<%bot> or Array<Symbol>),"      def compute(tags, include_defaults = true, exclude = [])
+        result = Array(tags).collect do |tag|
+          tags = I18n::Locale::Tag.tag(tag).self_and_parents.map! { |t| t.to_sym } - exclude
+          tags.each { |_tag| tags += compute(@map[_tag], false, exclude + tags) if @map[_tag] }
+          tags
+        end.flatten
+        result.push(*defaults) if include_defaults
+        result.uniq.compact
+      end
+",""
+I18n::Tests::Defaults,setup,"","","(Hash<Symbol, (Array<String> or Hash<Symbol, String>)> or Hash<Symbol, (Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or Symbol)> or Hash<Symbol, (Hash<Symbol, (String or Symbol)> or Hash<Symbol, String>)> or Hash<Symbol, (Hash<Symbol, (String or Symbol)> or String)> or Hash<Symbol, (Hash<Symbol, Hash<Symbol, Hash<Symbol, String>>> or Hash<Symbol, Hash<Symbol, Symbol>> or Hash<Symbol, String>)> or Hash<Symbol, (Hash<Symbol, String> or Proc)> or Hash<Symbol, (Hash<Symbol, String> or String or Symbol)> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, (Hash<Symbol, String> or Symbol)> or Hash<Symbol, Hash<Symbol, String>>)","      def setup
+        super
+        I18n.backend.store_translations(:en, :foo => { :bar => 'bar', :baz => 'baz' })
+      end
+",""
+I18n::Tests::Basics,teardown,"","",nil,"      def teardown
+        I18n.available_locales = nil
+      end
+",""
+I18n::Tests::Lookup,setup,"","","(Hash<Symbol, (Array<String> or Hash<String, String> or Hash<Symbol, String> or String or false or true)> or Hash<Symbol, (Array<String> or Hash<Symbol, (Hash<Symbol, String> or String)> or Hash<Symbol, String> or String or Symbol or false or true)> or Hash<Symbol, (Array<String> or Hash<Symbol, (String or Symbol)> or Hash<Symbol, String> or String or false or true)> or Hash<Symbol, (Array<String> or Hash<Symbol, Hash<Symbol, Hash<Symbol, String>>> or Hash<Symbol, Hash<Symbol, Symbol>> or Hash<Symbol, String> or String or false or true)> or Hash<Symbol, (Array<String> or Hash<Symbol, String> or Proc or String or false or true)> or Hash<Symbol, (Array<String> or Hash<Symbol, String> or String or Symbol or false or true)> or Hash<Symbol, (Array<String> or Hash<Symbol, String> or String or false or true)>)","      def setup
+        super
+        I18n.backend.store_translations(:en, :foo => { :bar => 'bar', :baz => 'baz' }, :falsy => false, :truthy => true,
+          :string => ""a"", :array => %w(a b c), :hash => { ""a"" => ""b"" })
+      end
+",""
+I18n::Tests::Interpolation,euc_jp,string,"string => String
+",String,"      def euc_jp(string)
+        string.encode!(Encoding::EUC_JP)
+      end
+",""
+I18n::Tests::Interpolation,interpolate,args,"args => (Array<(RDL::Type::GenericType or RDL::Type::NominalType)> or Array<RDL::Type::GenericType>)
+","(Array<String> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<Symbol, String>> or String)","      def interpolate(*args)
+        options = args.last.is_a?(Hash) ? args.pop : {}
+        key = args.pop
+        I18n.backend.translate('en', key, options)
+      end
+",""

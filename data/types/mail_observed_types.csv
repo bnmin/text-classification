@@ -1,0 +1,4958 @@
+Class,Method,Parameter Names,Observed Arg Types,Observed Return Type,Source Code,Comments
+Mail::Envelope,element,"","",Mail::EnvelopeFromElement,"    def element
+      @element ||= Mail::EnvelopeFromElement.new(value)
+    end
+",""
+Mail::Envelope,from,"","",String,"    def from
+      element.address
+    end
+",""
+Mail::Envelope,date,"","",DateTime,"    def date
+      element.date_time
+    end
+",""
+Mail::Part,add_content_id,content_id_val,"content_id_val => String
+",String,"    def add_content_id(content_id_val = '')
+      header['content-id'] = content_id_val
+    end
+","# Creates a new empty Content-ID field and inserts it in the correct order
+# into the Header.  The ContentIdField object will automatically generate
+# a unique content ID if you try and encode it or output it to_s without
+# specifying a content id.
+# 
+# It will preserve the content ID you specify if you do.
+"
+Mail::Part,has_content_id?,"","",(false or true),"    def has_content_id?
+      header.has_content_id?
+    end
+","# Returns true if the part has a content ID field, the field may or may
+# not have a value, but the field exists or not.
+"
+Mail::Part,cid,"","",String,"    def cid
+      add_content_id unless has_content_id?
+      Utilities.uri_escape(Utilities.unbracket(content_id))
+    end
+",""
+Mail::Part,url,"","",String,"    def url
+      ""cid:#{cid}""
+    end
+",""
+Mail::Part,inline?,"","",(false or nil or true),"    def inline?
+      header[:content_disposition].disposition_type == 'inline' if header[:content_disposition].respond_to?(:disposition_type)
+    end
+",""
+Mail::Part,add_required_fields,"","",String,"    def add_required_fields
+      super
+      add_content_id if !has_content_id? && inline?
+    end
+",""
+Mail::Part,add_required_message_fields,"","",nil,"    def add_required_message_fields
+      # Override so we don't add Date, MIME-Version, or Message-ID.
+    end
+",""
+Mail::Part,delivery_status_report_part?,"","",Integer,"    def delivery_status_report_part?
+      (main_type =~ /message/i && sub_type =~ /delivery-status/i) && body =~ /Status:/
+    end
+",""
+Mail::Part,delivery_status_data,"","",Mail::Header,"    def delivery_status_data
+      delivery_status_report_part? ? parse_delivery_status_report : {}
+    end
+",""
+Mail::Part,bounced?,"","",(false or true),"    def bounced?
+      if action.is_a?(Array)
+        !!(action.first =~ /failed/i)
+      else
+        !!(action =~ /failed/i)
+      end
+    end
+",""
+Mail::Part,action,"","",(Array<String> or String),"    def action
+      get_return_values('action')
+    end
+","# Either returns the action if the message has just a single report, or an
+# array of all the actions, one for each report
+"
+Mail::Part,final_recipient,"","",String,"    def final_recipient
+      get_return_values('final-recipient')
+    end
+",""
+Mail::Part,error_status,"","",String,"    def error_status
+      get_return_values('status')
+    end
+",""
+Mail::Part,diagnostic_code,"","",String,"    def diagnostic_code
+      get_return_values('diagnostic-code')
+    end
+",""
+Mail::Part,remote_mta,"","",String,"    def remote_mta
+      get_return_values('remote-mta')
+    end
+",""
+Mail::Part,retryable?,"","",(false or true),"    def retryable?
+      !(error_status =~ /^5/)
+    end
+",""
+Mail::Part,get_return_values,key,"key => String
+",(Array<String> or String),"    def get_return_values(key)
+      if delivery_status_data[key].is_a?(Array)
+        delivery_status_data[key].map { |a| a.value }
+      elsif !delivery_status_data[key].nil?
+        delivery_status_data[key].value
+      else
+        nil
+      end
+    end
+",""
+Mail::Part,parse_message,"","",String,"    def parse_message
+      header_part, body_part = raw_source.split(/#{Constants::LAX_CRLF}#{Constants::WSP}*#{Constants::LAX_CRLF}/m, 2)
+      if header_part =~ Constants::HEADER_LINE
+        self.header = header_part
+        self.body   = body_part
+      else
+        self.header = ""Content-Type: text/plain\r\n""
+        self.body   = raw_source
+      end
+    end
+","# A part may not have a header.... so, just init a body if no header
+"
+Mail::Part,parse_delivery_status_report,"","",Mail::Header,"    def parse_delivery_status_report
+      @delivery_status_data ||= Header.new(body.to_s.gsub(""\r\n\r\n"", ""\r\n""))
+    end
+",""
+Mail::Utilities,atom_safe?,str,"str => (Mail::Multibyte::Chars or String)
+",(false or true),"    def atom_safe?( str )
+      not Constants::ATOM_UNSAFE === str
+    end
+","# Returns true if the string supplied is free from characters not allowed as an ATOM
+"
+Mail::Utilities,quote_atom,str,"str => (Mail::Multibyte::Chars or String)
+",(Mail::Multibyte::Chars or String),"    def quote_atom( str )
+      atom_safe?( str ) ? str : dquote(str)
+    end
+","# If the string supplied has ATOM unsafe characters in it, will return the string quoted
+# in double quotes, otherwise returns the string unmodified
+"
+Mail::Utilities,quote_phrase,str,"str => String
+",String,"    def quote_phrase( str )
+      if str.respond_to?(:force_encoding)
+        original_encoding = str.encoding
+        ascii_str = str.to_s.dup.force_encoding('ASCII-8BIT')
+        if Constants::PHRASE_UNSAFE === ascii_str
+          dquote(ascii_str).force_encoding(original_encoding)
+        else
+          str
+        end
+      else
+        Constants::PHRASE_UNSAFE === str ? dquote(str) : str
+      end
+    end
+","# If the string supplied has PHRASE unsafe characters in it, will return the string quoted
+# in double quotes, otherwise returns the string unmodified
+"
+Mail::Utilities,token_safe?,str,"str => (Mail::Multibyte::Chars or String)
+",(false or true),"    def token_safe?( str )
+      not Constants::TOKEN_UNSAFE === str
+    end
+","# Returns true if the string supplied is free from characters not allowed as a TOKEN
+"
+Mail::Utilities,quote_token,str,"str => (Mail::Multibyte::Chars or String)
+",(Mail::Multibyte::Chars or String),"    def quote_token( str )
+      if str.respond_to?(:force_encoding)
+        original_encoding = str.encoding
+        ascii_str = str.to_s.dup.force_encoding('ASCII-8BIT')
+        if token_safe?( ascii_str )
+          str
+        else
+          dquote(ascii_str).force_encoding(original_encoding)
+        end
+      else
+        token_safe?( str ) ? str : dquote(str)
+      end
+    end
+","# If the string supplied has TOKEN unsafe characters in it, will return the string quoted
+# in double quotes, otherwise returns the string unmodified
+"
+Mail::Utilities,dquote,str,"str => (Mail::Multibyte::Chars or String)
+",String,"    def dquote( str )
+      '""' + unquote(str).gsub(/[\\""]/n) {|s| '\\' + s } + '""'
+    end
+","# Wraps supplied string in double quotes and applies \-escaping as necessary,
+# unless it is already wrapped.
+#
+# Example:
+#
+#  string = 'This is a string'
+#  dquote(string) #=> '""This is a string""'
+#
+#  string = 'This is ""a string""'
+#  dquote(string #=> '""This is \""a string\""'
+"
+Mail::Utilities,unquote,str,"str => (Mail::Multibyte::Chars or String)
+",(Mail::Multibyte::Chars or String),"    def unquote( str )
+      if str =~ /^""(.*?)""$/
+        unescape($1)
+      else
+        str
+      end
+    end
+","# Unwraps supplied string from inside double quotes and
+# removes any \-escaping.
+#
+# Example:
+#
+#  string = '""This is a string""'
+#  unquote(string) #=> 'This is a string'
+#
+#  string = '""This is \""a string\""""'
+#  unqoute(string) #=> 'This is ""a string""'
+"
+Mail::Utilities,unescape,str,"str => String
+",String,"    def unescape( str )
+      str.gsub(/\\(.)/, '\1')
+    end
+","# Removes any \-escaping.
+#
+# Example:
+#
+#  string = 'This is \""a string\""'
+#  unescape(string) #=> 'This is ""a string""'
+#
+#  string = '""This is \""a string\""""'
+#  unescape(string) #=> '""This is ""a string""""'
+"
+Mail::Utilities,paren,str,"str => String
+",String,"    def paren( str )
+      RubyVer.paren( str )
+    end
+","# Wraps a string in parenthesis and escapes any that are in the string itself.
+#
+# Example:
+#
+#  paren( 'This is a string' ) #=> '(This is a string)'
+"
+Mail::Utilities,unparen,str,"str => (Mail::Multibyte::Chars or String)
+",(Mail::Multibyte::Chars or String),"    def unparen( str )
+      if str.start_with?('(') && str.end_with?(')')
+        str.slice(1..-2)
+      else
+        str
+      end
+    end
+","# Unwraps a string from being wrapped in parenthesis
+#
+# Example:
+#
+#  str = '(This is a string)'
+#  unparen( str ) #=> 'This is a string'
+"
+Mail::Utilities,bracket,str,"str => String
+",String,"    def bracket( str )
+      RubyVer.bracket( str )
+    end
+","# Wraps a string in angle brackets and escapes any that are in the string itself
+#
+# Example:
+#
+#  bracket( 'This is a string' ) #=> '<This is a string>'
+"
+Mail::Utilities,unbracket,str,"str => (Mail::Multibyte::Chars or String)
+",(Mail::Multibyte::Chars or String),"    def unbracket( str )
+      if str.start_with?('<') && str.end_with?('>')
+        str.slice(1..-2)
+      else
+        str
+      end
+    end
+","# Unwraps a string from being wrapped in parenthesis
+#
+# Example:
+#
+#  str = '<This is a string>'
+#  unbracket( str ) #=> 'This is a string'
+"
+Mail::Utilities,escape_paren,str,"str => String
+",String,"    def escape_paren( str )
+      RubyVer.escape_paren( str )
+    end
+","# Escape parenthesies in a string
+#
+# Example:
+#
+#  str = 'This is (a) string'
+#  escape_paren( str ) #=> 'This is \(a\) string'
+"
+Mail::Utilities,uri_escape,str,"str => String
+",String,"    def uri_escape( str )
+      uri_parser.escape(str)
+    end
+",""
+Mail::Utilities,uri_unescape,str,"str => String
+",String,"    def uri_unescape( str )
+      uri_parser.unescape(str)
+    end
+",""
+Mail::Utilities,uri_parser,"","",URI::RFC2396_Parser,"    def uri_parser
+      @uri_parser ||= URI.const_defined?(:DEFAULT_PARSER) ? URI::DEFAULT_PARSER : URI
+    end
+",""
+Mail::Utilities,match_to_s,"obj1, obj2","obj1 => String
+obj2 => String
+",(false or true),"    def match_to_s( obj1, obj2 )
+      obj1.to_s.casecmp(obj2.to_s) == 0
+    end
+","# Matches two objects with their to_s values case insensitively
+#
+# Example:
+#
+#  obj2 = ""This_is_An_object""
+#  obj1 = :this_IS_an_object
+#  match_to_s( obj1, obj2 ) #=> true
+"
+Mail::Utilities,dasherize,str,"str => (String or Symbol)
+",String,"    def dasherize( str )
+      str.to_s.tr(Constants::UNDERSCORE, Constants::HYPHEN)
+    end
+","# Swaps out all underscores (_) for hyphens (-) good for stringing from symbols
+# a field name.
+#
+# Example:
+#
+#  string = :resent_from_field
+#  dasherize( string ) #=> 'resent-from-field'
+"
+Mail::Utilities,underscoreize,str,"str => (Class or String or Symbol)
+",String,"    def underscoreize( str )
+      str.to_s.downcase.tr(Constants::HYPHEN, Constants::UNDERSCORE)
+    end
+","# Swaps out all hyphens (-) for underscores (_) good for stringing to symbols
+# a field name.
+#
+# Example:
+#
+#  string = :resent_from_field
+#  underscoreize ( string ) #=> 'resent_from_field'
+"
+Mail::Utilities,blank?,value,"value => (Array<%bot> or Array<(Hash<String, String> or String)> or Array<(Hash<Symbol, String> or String)> or Array<Array<(Mail::Field::IncompleteParseError or String)>> or Array<Mail::Part> or Array<String> or Class or DateTime or Hash<%bot, %bot> or Hash<Symbol, Hash<%bot, %bot>> or Hash<Symbol, String> or Hash<Symbol, nil> or Integer or Mail::Body or Mail::SMTP or Mail::SubjectField or String or Symbol or Time or false or true)
+",(false or true),"    def blank?(value)
+      if value.kind_of?(NilClass)
+        true
+      elsif value.kind_of?(String)
+        value !~ /\S/
+      else
+        value.respond_to?(:empty?) ? value.empty? : !value
+      end
+    end
+","# Returns true if the object is considered blank.
+# A blank includes things like '', '   ', nil,
+# and arrays and hashes that have nothing in them.
+#
+# This logic is mostly shared with ActiveSupport's blank?
+"
+Mail::Utilities,generate_message_id,"","",String,"    def generate_message_id
+      ""<#{Mail.random_tag}@#{::Socket.gethostname}.mail>""
+    end
+",""
+Mail::IndifferentHash,initialize,constructor,"constructor => (Hash<%bot, %bot> or Hash<String, String> or Hash<Symbol, (Array<String> or String)> or Hash<Symbol, (Hash<String, String> or String)> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<String, String>> or Hash<Symbol, String>)
+","(Hash<%bot, %bot> or Hash<String, (Array<String> or String)> or Hash<String, (Hash<String, String> or String)> or Hash<String, Array<String>> or Hash<String, Hash<String, String>> or Hash<String, String>)","    def initialize(constructor = {})
+      if constructor.is_a?(Hash)
+        super()
+        update(constructor)
+      else
+        super(constructor)
+      end
+    end
+",""
+Mail::IndifferentHash,default,key,"key => (String or Symbol)
+",nil,"    def default(key = nil)
+      if key.is_a?(Symbol) && include?(key = key.to_s)
+        self[key]
+      else
+        super
+      end
+    end
+",""
+Mail::IndifferentHash,[]=,"key, value","key => (String or Symbol)
+value => String
+",String,"    def []=(key, value)
+      regular_writer(convert_key(key), convert_value(value))
+    end
+","# Assigns a new value to the hash:
+#
+#   hash = HashWithIndifferentAccess.new
+#   hash[:key] = ""value""
+#
+"
+Mail::IndifferentHash,update,other_hash,"other_hash => (Hash<%bot, %bot> or Hash<String, String> or Hash<Symbol, (Array<String> or String)> or Hash<Symbol, (Hash<String, String> or String)> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<String, String>> or Hash<Symbol, String>)
+","(Hash<%bot, %bot> or Hash<String, (Array<String> or String)> or Hash<String, (Hash<String, String> or String)> or Hash<String, Array<String>> or Hash<String, Hash<String, String>> or Hash<String, String>)","    def update(other_hash)
+      other_hash.each_pair { |key, value| regular_writer(convert_key(key), convert_value(value)) }
+      self
+    end
+","# Updates the instantized hash with values from the second:
+#
+#   hash_1 = HashWithIndifferentAccess.new
+#   hash_1[:key] = ""value""
+#
+#   hash_2 = HashWithIndifferentAccess.new
+#   hash_2[:key] = ""New Value!""
+#
+#   hash_1.update(hash_2) # => {""key""=>""New Value!""}
+#
+"
+Mail::IndifferentHash,delete,key,"key => Symbol
+",String,"    def delete(key)
+      super(convert_key(key))
+    end
+","# Removes a specified key from the hash.
+"
+Mail::IndifferentHash,convert_key,key,"key => (String or Symbol)
+",String,"    def convert_key(key)
+      key.kind_of?(Symbol) ? key.to_s : key
+    end
+",""
+Mail::IndifferentHash,convert_value,value,"value => (Array<String> or Hash<String, String> or String)
+","(Array<String> or Hash<String, String> or String)","    def convert_value(value)
+      if value.class == Hash
+        self.class.new_from_hash_copying_default(value)
+      elsif value.is_a?(Array)
+        value.dup.replace(value.map { |e| convert_value(e) })
+      else
+        value
+      end
+    end
+",""
+Mail::FieldList,has_field?,field_name,"field_name => String
+",(false or true),"    def has_field?(field_name)
+      any? { |f| f.responsible_for? field_name }
+    end
+",""
+Mail::FieldList,select_fields,field_name,"field_name => String
+",(Array<%bot> or Array<Mail::Field>),"    def select_fields(field_name)
+      select { |f| f.responsible_for? field_name }
+    end
+",""
+Mail::FieldList,get_field,field_name,"field_name => String
+",(Array<Mail::Field> or Mail::Field),"    def get_field(field_name)
+      fields = select_fields(field_name)
+
+      case fields.size
+      when 0; nil
+      when 1; fields.first
+      else fields
+      end
+    end
+",""
+Mail::FieldList,add_field,field,"field => Mail::Field
+",Array<Mail::Field>,"    def add_field(field)
+      if field.singular?
+        replace_field field
+      else
+        insert_field field
+      end
+    end
+",""
+Mail::FieldList,replace_field,field,"field => Mail::Field
+",Array<Mail::Field>,"    def replace_field(field)
+      if first_offset = index { |f| f.responsible_for? field.name }
+        delete_field field.name
+        insert first_offset, field
+      else
+        insert_field field
+      end
+    end
+",""
+Mail::FieldList,insert_field,field,"field => Mail::Field
+",Array<Mail::Field>,"    def insert_field(field)
+      lo, hi = 0, size
+      while lo < hi
+        mid = (lo + hi).div(2)
+        if field < self[mid]
+          hi = mid
+        else
+          lo = mid + 1
+        end
+      end
+
+      insert lo, field
+    end
+","# Insert the field in sorted order.
+#
+# Heavily based on bisect.insort from Python, which is:
+#   Copyright (C) 2001-2013 Python Software Foundation.
+#   Licensed under <http://docs.python.org/license.html>
+#   From <http://hg.python.org/cpython/file/2.7/Lib/bisect.py>
+"
+Mail::FieldList,delete_field,name,"name => String
+",(Array<%bot> or Array<Mail::Field>),"    def delete_field(name)
+      delete_if { |f| f.responsible_for? name }
+    end
+",""
+Mail::FieldList,summary,"","",String,"    def summary
+      map { |f| ""<#{f.name}: #{f.value}>"" }.join("", "")
+    end
+",""
+Mail::SmtpEnvelope,initialize,mail,"mail => Mail::Message
+",String,"    def initialize(mail)
+      self.from = mail.smtp_envelope_from
+      self.to = mail.smtp_envelope_to
+      self.message = mail.encoded
+    end
+",""
+Mail::SmtpEnvelope,from=,addr,"addr => String
+",String,"    def from=(addr)
+      if Utilities.blank? addr
+        raise ArgumentError, ""SMTP From address may not be blank: #{addr.inspect}""
+      end
+
+      @from = validate_addr 'From', addr
+    end
+",""
+Mail::SmtpEnvelope,to=,addr,"addr => Array<String>
+",Array<String>,"    def to=(addr)
+      if Utilities.blank?(addr)
+        raise ArgumentError, ""SMTP To address may not be blank: #{addr.inspect}""
+      end
+
+      @to = Array(addr).map do |addr|
+        validate_addr 'To', addr
+      end
+    end
+",""
+Mail::SmtpEnvelope,message=,message,"message => String
+",String,"    def message=(message)
+      if Utilities.blank?(message)
+        raise ArgumentError, 'SMTP message may not be blank'
+      end
+
+      @message = message
+    end
+",""
+Mail::SmtpEnvelope,validate_addr,"addr_name, addr","addr_name => String
+addr => String
+",String,"      def validate_addr(addr_name, addr)
+        if addr.bytesize > MAX_ADDRESS_BYTESIZE
+          raise ArgumentError, ""SMTP #{addr_name} address may not exceed #{MAX_ADDRESS_BYTESIZE} bytes: #{addr.inspect}""
+        end
+
+        if /[\r\n]/ =~ addr
+          raise ArgumentError, ""SMTP #{addr_name} address may not contain CR or LF line breaks: #{addr.inspect}""
+        end
+
+        addr
+      end
+",""
+Mail::Message,initialize,"args, block","args => (Array<%bot> or Array<RDL::Type::GenericType> or Array<RDL::Type::NominalType>)
+block => nil
+",Mail::Message,"    def initialize(*args, &block)
+      @body = nil
+      @body_raw = nil
+      @separate_parts = false
+      @text_part = nil
+      @html_part = nil
+      @errors = nil
+      @header = nil
+      @charset = self.class.default_charset
+      @defaulted_charset = true
+
+      @smtp_envelope_from = nil
+      @smtp_envelope_to = nil
+
+      @perform_deliveries = true
+      @raise_delivery_errors = true
+
+      @delivery_handler = nil
+
+      @delivery_method = Mail.delivery_method.dup
+
+      @transport_encoding = Mail::Encodings.get_encoding('7bit')
+
+      @mark_for_delete = false
+
+      if args.flatten.first.respond_to?(:each_pair)
+        init_with_hash(args.flatten.first)
+      else
+        init_with_string(args.flatten[0].to_s)
+      end
+
+      # Support both builder styles:
+      #
+      #   Mail.new do
+      #     to 'recipient@example.com'
+      #   end
+      #
+      # and
+      #
+      #   Mail.new do |m|
+      #     m.to 'recipient@example.com'
+      #   end
+      if block_given?
+        if block.arity.zero? || (RUBY_VERSION < '1.9' && block.arity < 1)
+          instance_eval(&block)
+        else
+          yield self
+        end
+      end
+
+      self
+    end
+","# ==Making an email
+#
+# You can make an new mail object via a block, passing a string, file or direct assignment.
+#
+# ===Making an email via a block
+#
+#  mail = Mail.new do |m|
+#    m.from 'mikel@test.lindsaar.net'
+#    m.to 'you@test.lindsaar.net'
+#    m.subject 'This is a test email'
+#    m.body File.read('body.txt')
+#  end
+#
+#  mail.to_s #=> ""From: mikel@test.lindsaar.net\r\nTo: you@...
+#
+# If may also pass a block with no arguments, in which case it will
+# be evaluated in the scope of the new message instance:
+#
+#  mail = Mail.new do
+#    from 'mikel@test.lindsaar.net'
+#    # …
+#  end
+#
+# ===Making an email via passing a string
+#
+#  mail = Mail.new(""To: mikel@test.lindsaar.net\r\nSubject: Hello\r\n\r\nHi there!"")
+#  mail.body.to_s #=> 'Hi there!'
+#  mail.subject   #=> 'Hello'
+#  mail.to        #=> 'mikel@test.lindsaar.net'
+#
+# ===Making an email from a file
+#
+#  mail = Mail.read('path/to/file.eml')
+#  mail.body.to_s #=> 'Hi there!'
+#  mail.subject   #=> 'Hello'
+#  mail.to        #=> 'mikel@test.lindsaar.net'
+#
+# ===Making an email via assignment
+#
+# You can assign values to a mail object via four approaches:
+#
+# * Message#field_name=(value)
+# * Message#field_name(value)
+# * Message#['field_name']=(value)
+# * Message#[:field_name]=(value)
+#
+# Examples:
+#
+#  mail = Mail.new
+#  mail['from'] = 'mikel@test.lindsaar.net'
+#  mail[:to]    = 'you@test.lindsaar.net'
+#  mail.subject 'This is a test email'
+#  mail.body    = 'This is a body'
+#
+#  mail.to_s #=> ""From: mikel@test.lindsaar.net\r\nTo: you@...
+#
+"
+Mail::Message,inform_observers,"","",(Array<%bot> or Array<Class>),"    def inform_observers
+      Mail.inform_observers(self)
+    end
+",""
+Mail::Message,inform_interceptors,"","",(Array<%bot> or Array<Class>),"    def inform_interceptors
+      Mail.inform_interceptors(self)
+    end
+",""
+Mail::Message,deliver,"","",Mail::Message,"    def deliver
+      inform_interceptors
+      if delivery_handler
+        delivery_handler.deliver_mail(self) { do_delivery }
+      else
+        do_delivery
+      end
+      inform_observers
+      self
+    end
+","# Delivers a mail object.
+#
+# Examples:
+#
+#  mail = Mail.read('file.eml')
+#  mail.deliver
+"
+Mail::Message,deliver!,"","",(Mail::Message or String),"    def deliver!
+      inform_interceptors
+      response = delivery_method.deliver!(self)
+      inform_observers
+      delivery_method.settings[:return_response] ? response : self
+    end
+","# This method bypasses checking perform_deliveries and raise_delivery_errors,
+# so use with caution.
+#
+# It still however fires off the interceptors and calls the observers callbacks if they are defined.
+#
+# Returns self
+"
+Mail::Message,delivery_method,"method, settings","method => Symbol
+settings => (Hash<%bot, %bot> or Hash<Symbol, (Integer or String or true)> or Hash<Symbol, (String or Symbol or true)> or Hash<Symbol, String>)
+",(Mail::FileDelivery or Mail::LoggerDelivery or Mail::SMTP or Mail::SMTPConnection or Mail::Sendmail or Mail::TestMailer),"    def delivery_method(method = nil, settings = {})
+      unless method
+        @delivery_method
+      else
+        @delivery_method = Configuration.instance.lookup_delivery_method(method).new(settings)
+      end
+    end
+",""
+Mail::Message,reply,"args, block","args => (Array<%bot> or Array<RDL::Type::GenericType>)
+block => nil
+",Mail::Message,"    def reply(*args, &block)
+      self.class.new.tap do |reply|
+        if message_id
+          bracketed_message_id = ""<#{message_id}>""
+          reply.in_reply_to = bracketed_message_id
+          if !references.nil?
+            refs = [references].flatten.map { |r| ""<#{r}>"" }
+            refs << bracketed_message_id
+            reply.references = refs.join(' ')
+          elsif !in_reply_to.nil? && !in_reply_to.kind_of?(Array)
+            reply.references = ""<#{in_reply_to}> #{bracketed_message_id}""
+          end
+          reply.references ||= bracketed_message_id
+        end
+        if subject
+          reply.subject = subject =~ /^Re:/i ? subject : ""Re: #{subject}""
+        end
+        if reply_to || from
+          reply.to = self[reply_to ? :reply_to : :from].to_s
+        end
+        if to
+          reply.from = self[:to].formatted.first.to_s
+        end
+
+        unless args.empty?
+          if args.flatten.first.respond_to?(:each_pair)
+            reply.send(:init_with_hash, args.flatten.first)
+          else
+            reply.send(:init_with_string, args.flatten[0].to_s.strip)
+          end
+        end
+
+        if block_given?
+          reply.instance_eval(&block)
+        end
+      end
+    end
+",""
+Mail::Message,<=>,other,"other => Mail::Message
+",Integer,"    def <=>(other)
+      if other.nil?
+        1
+      else
+        self.date <=> other.date
+      end
+    end
+","# Provides the operator needed for sort et al.
+#
+# Compares this mail object with another mail object, this is done by date, so an
+# email that is older than another will appear first.
+#
+# Example:
+#
+#  mail1 = Mail.new do
+#    date(Time.now)
+#  end
+#  mail2 = Mail.new do
+#    date(Time.now - 86400) # 1 day older
+#  end
+#  [mail2, mail1].sort #=> [mail2, mail1]
+"
+Mail::Message,==,other,"other => Mail::Message
+",(false or true),"    def ==(other)
+      return false unless other.respond_to?(:encoded)
+
+      if self.message_id && other.message_id
+        self.encoded == other.encoded
+      else
+        dup.tap { |m| m.message_id = '<temp@test>' }.encoded ==
+          other.dup.tap { |m| m.message_id = '<temp@test>' }.encoded
+      end
+    end
+","# Two emails are the same if they have the same fields and body contents. One
+# gotcha here is that Mail will insert Message-IDs when calling encoded, so doing
+# mail1.encoded == mail2.encoded is most probably not going to return what you think
+# as the assigned Message-IDs by Mail (if not already defined as the same) will ensure
+# that the two objects are unique, and this comparison will ALWAYS return false.
+#
+# So the == operator has been defined like so:  Two messages are the same if they have
+# the same content, ignoring the Message-ID field, unless BOTH emails have a defined and
+# different Message-ID value, then they are false.
+#
+# So, in practice the == operator works like this:
+#
+#  m1 = Mail.new(""Subject: Hello\r\n\r\nHello"")
+#  m2 = Mail.new(""Subject: Hello\r\n\r\nHello"")
+#  m1 == m2 #=> true
+#
+#  m1 = Mail.new(""Subject: Hello\r\n\r\nHello"")
+#  m2 = Mail.new(""Message-ID: <1234@test>\r\nSubject: Hello\r\n\r\nHello"")
+#  m1 == m2 #=> true
+#
+#  m1 = Mail.new(""Message-ID: <1234@test>\r\nSubject: Hello\r\n\r\nHello"")
+#  m2 = Mail.new(""Subject: Hello\r\n\r\nHello"")
+#  m1 == m2 #=> true
+#
+#  m1 = Mail.new(""Message-ID: <1234@test>\r\nSubject: Hello\r\n\r\nHello"")
+#  m2 = Mail.new(""Message-ID: <1234@test>\r\nSubject: Hello\r\n\r\nHello"")
+#  m1 == m2 #=> true
+#
+#  m1 = Mail.new(""Message-ID: <1234@test>\r\nSubject: Hello\r\n\r\nHello"")
+#  m2 = Mail.new(""Message-ID: <DIFFERENT@test>\r\nSubject: Hello\r\n\r\nHello"")
+#  m1 == m2 #=> false
+"
+Mail::Message,initialize_copy,original,"original => Mail::Message
+",Mail::Header,"    def initialize_copy(original)
+      super
+      @header = @header.dup
+    end
+",""
+Mail::Message,raw_source,"","",String,"    def raw_source
+      @raw_source
+    end
+","# Provides access to the raw source of the message as it was when it
+# was instantiated. This is set at initialization and so is untouched
+# by the parsers or decoder / encoders
+#
+# Example:
+#
+#  mail = Mail.new('This is an invalid email message')
+#  mail.raw_source #=> ""This is an invalid email message""
+"
+Mail::Message,set_envelope,val,"val => String
+",Mail::Envelope,"    def set_envelope(val)
+      @raw_envelope = val
+      @envelope = Mail::Envelope.parse(val) rescue nil
+    end
+","# Sets the envelope from for the email
+"
+Mail::Message,raw_envelope,"","",String,"    def raw_envelope
+      @raw_envelope
+    end
+","# The raw_envelope is the From mikel@test.lindsaar.net Mon May  2 16:07:05 2009
+# type field that you can see at the top of any email that has come
+# from a mailbox
+"
+Mail::Message,envelope_from,"","",String,"    def envelope_from
+      @envelope ? @envelope.from : nil
+    end
+",""
+Mail::Message,envelope_date,"","",DateTime,"    def envelope_date
+      @envelope ? @envelope.date : nil
+    end
+",""
+Mail::Message,header=,value,"value => String
+",Mail::Header,"    def header=(value)
+      @header = Mail::Header.new(value, charset)
+    end
+","# Sets the header of the message object.
+#
+# Example:
+#
+#  mail.header = 'To: mikel@test.lindsaar.net\r\nFrom: Bob@bob.com'
+#  mail.header #=> <#Mail::Header
+"
+Mail::Message,header,value,"value => nil
+",Mail::Header,"    def header(value = nil)
+      value ? self.header = value : @header
+    end
+","# Returns the header object of the message object. Or, if passed
+# a parameter sets the value.
+#
+# Example:
+#
+#  mail = Mail::Message.new('To: mikel\r\nFrom: you')
+#  mail.header #=> #<Mail::Header:0x13ce14 @raw_source=""To: mikel\r\nFr...
+#
+#  mail.header #=> nil
+#  mail.header 'To: mikel\r\nFrom: you'
+#  mail.header #=> #<Mail::Header:0x13ce14 @raw_source=""To: mikel\r\nFr...
+"
+Mail::Message,headers,hash,"hash => Hash<String, String>
+","Hash<String, String>","    def headers(hash = {})
+      hash.each_pair do |k,v|
+        header[k] = v
+      end
+    end
+","# Provides a way to set custom headers, by passing in a hash
+"
+Mail::Message,errors,"","",Array<Array<(Mail::Field::IncompleteParseError or String)>>,"    def errors
+      header.errors
+    end
+","# Returns a list of parser errors on the header, each field that had an error
+# will be reparsed as an unstructured field to preserve the data inside, but
+# will not be used for further processing.
+#
+# It returns a nested array of [field_name, value, original_error_message]
+# per error found.
+#
+# Example:
+#
+#  message = Mail.new(""Content-Transfer-Encoding: weirdo\r\n"")
+#  message.errors.size #=> 1
+#  message.errors.first[0] #=> ""Content-Transfer-Encoding""
+#  message.errors.first[1] #=> ""weirdo""
+#  message.errors.first[3] #=> <The original error message exception>
+#
+# This is a good first defence on detecting spam by the way.  Some spammers send
+# invalid emails to try and get email parsers to give up parsing them.
+"
+Mail::Message,bcc,val,"val => (Array<String> or String)
+",(Array<String> or String),"    def bcc( val = nil )
+      default :bcc, val
+    end
+","# Returns the Bcc value of the mail object as an array of strings of
+# address specs.
+#
+# Example:
+#
+#  mail.bcc = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.bcc #=> ['mikel@test.lindsaar.net']
+#  mail.bcc = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.bcc #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.bcc 'Mikel <mikel@test.lindsaar.net>'
+#  mail.bcc #=> ['mikel@test.lindsaar.net']
+#
+# Additionally, you can append new addresses to the returned Array like
+# object.
+#
+# Example:
+#
+#  mail.bcc 'Mikel <mikel@test.lindsaar.net>'
+#  mail.bcc << 'ada@test.lindsaar.net'
+#  mail.bcc #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,bcc=,val,"val => String
+",String,"    def bcc=( val )
+      header[:bcc] = val
+    end
+","# Sets the Bcc value of the mail object, pass in a string of the field
+#
+# Example:
+#
+#  mail.bcc = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.bcc #=> ['mikel@test.lindsaar.net']
+#  mail.bcc = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.bcc #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,cc,val,"val => (Array<String> or String)
+",(Array<String> or String),"    def cc( val = nil )
+      default :cc, val
+    end
+","# Returns the Cc value of the mail object as an array of strings of
+# address specs.
+#
+# Example:
+#
+#  mail.cc = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.cc #=> ['mikel@test.lindsaar.net']
+#  mail.cc = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.cc #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.cc 'Mikel <mikel@test.lindsaar.net>'
+#  mail.cc #=> ['mikel@test.lindsaar.net']
+#
+# Additionally, you can append new addresses to the returned Array like
+# object.
+#
+# Example:
+#
+#  mail.cc 'Mikel <mikel@test.lindsaar.net>'
+#  mail.cc << 'ada@test.lindsaar.net'
+#  mail.cc #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,cc=,val,"val => (Array<String> or String)
+",(Array<String> or String),"    def cc=( val )
+      header[:cc] = val
+    end
+","# Sets the Cc value of the mail object, pass in a string of the field
+#
+# Example:
+#
+#  mail.cc = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.cc #=> ['mikel@test.lindsaar.net']
+#  mail.cc = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.cc #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,comments,val,"val => String
+",String,"    def comments( val = nil )
+      default :comments, val
+    end
+",""
+Mail::Message,comments=,val,"val => String
+",String,"    def comments=( val )
+      header[:comments] = val
+    end
+",""
+Mail::Message,content_description,val,"val => String
+",String,"    def content_description( val = nil )
+      default :content_description, val
+    end
+",""
+Mail::Message,content_description=,val,"val => String
+",String,"    def content_description=( val )
+      header[:content_description] = val
+    end
+",""
+Mail::Message,content_disposition,val,"val => String
+",String,"    def content_disposition( val = nil )
+      default :content_disposition, val
+    end
+",""
+Mail::Message,content_disposition=,val,"val => String
+",String,"    def content_disposition=( val )
+      header[:content_disposition] = val
+    end
+",""
+Mail::Message,content_id,val,"val => String
+",String,"    def content_id( val = nil )
+      default :content_id, val
+    end
+",""
+Mail::Message,content_id=,val,"val => String
+",String,"    def content_id=( val )
+      header[:content_id] = val
+    end
+",""
+Mail::Message,content_location,val,"val => nil
+",String,"    def content_location( val = nil )
+      default :content_location, val
+    end
+",""
+Mail::Message,content_transfer_encoding,val,"val => String
+",String,"    def content_transfer_encoding( val = nil )
+      default :content_transfer_encoding, val
+    end
+",""
+Mail::Message,content_transfer_encoding=,val,"val => (Class or String)
+",(Class or String),"    def content_transfer_encoding=( val )
+      header[:content_transfer_encoding] = val
+    end
+",""
+Mail::Message,content_type,val,"val => (Array<(Hash<String, String> or String)> or String)
+","(Array<(Hash<String, String> or String)> or String)","    def content_type( val = nil )
+      default :content_type, val
+    end
+",""
+Mail::Message,content_type=,val,"val => (Array<(Hash<Symbol, String> or String)> or String)
+","(Array<(Hash<Symbol, String> or String)> or String)","    def content_type=( val )
+      header[:content_type] = val
+    end
+",""
+Mail::Message,date,val,"val => (String or Time)
+",(DateTime or String or Time),"    def date( val = nil )
+      default :date, val
+    end
+",""
+Mail::Message,date=,val,"val => String
+",String,"    def date=( val )
+      header[:date] = val
+    end
+",""
+Mail::Message,transport_encoding,val,"val => String
+",(Class or String),"    def transport_encoding( val = nil)
+      if val
+        self.transport_encoding = val
+      else
+        @transport_encoding
+      end
+    end
+",""
+Mail::Message,transport_encoding=,val,"val => (Class or String)
+",Class,"    def transport_encoding=( val )
+      @transport_encoding = Mail::Encodings.get_encoding(val)
+    end
+",""
+Mail::Message,from,val,"val => String
+",(Array<String> or String),"    def from( val = nil )
+      default :from, val
+    end
+","# Returns the From value of the mail object as an array of strings of
+# address specs.
+#
+# Example:
+#
+#  mail.from = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.from #=> ['mikel@test.lindsaar.net']
+#  mail.from = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.from #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.from 'Mikel <mikel@test.lindsaar.net>'
+#  mail.from #=> ['mikel@test.lindsaar.net']
+#
+# Additionally, you can append new addresses to the returned Array like
+# object.
+#
+# Example:
+#
+#  mail.from 'Mikel <mikel@test.lindsaar.net>'
+#  mail.from << 'ada@test.lindsaar.net'
+#  mail.from #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,from=,val,"val => (Array<String> or String)
+",(Array<String> or String),"    def from=( val )
+      header[:from] = val
+    end
+","# Sets the From value of the mail object, pass in a string of the field
+#
+# Example:
+#
+#  mail.from = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.from #=> ['mikel@test.lindsaar.net']
+#  mail.from = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.from #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,in_reply_to,val,"val => String
+",(Array<%bot> or String),"    def in_reply_to( val = nil )
+      default :in_reply_to, val
+    end
+",""
+Mail::Message,in_reply_to=,val,"val => String
+",String,"    def in_reply_to=( val )
+      header[:in_reply_to] = val
+    end
+",""
+Mail::Message,keywords,val,"val => String
+",(Array<String> or String),"    def keywords( val = nil )
+      default :keywords, val
+    end
+",""
+Mail::Message,keywords=,val,"val => String
+",String,"    def keywords=( val )
+      header[:keywords] = val
+    end
+",""
+Mail::Message,message_id,val,"val => String
+",String,"    def message_id( val = nil )
+      default :message_id, val
+    end
+","# Returns the Message-ID of the mail object.  Note, per RFC 2822 the Message ID
+# consists of what is INSIDE the < > usually seen in the mail header, so this method
+# will return only what is inside.
+#
+# Example:
+#
+#  mail.message_id = '<1234@message.id>'
+#  mail.message_id #=> '1234@message.id'
+#
+# Also allows you to set the Message-ID by passing a string as a parameter
+#
+#  mail.message_id '<1234@message.id>'
+#  mail.message_id #=> '1234@message.id'
+"
+Mail::Message,message_id=,val,"val => String
+",String,"    def message_id=( val )
+      header[:message_id] = val
+    end
+","# Sets the Message-ID. Note, per RFC 2822 the Message ID consists of what is INSIDE
+# the < > usually seen in the mail header, so this method will return only what is inside.
+#
+#  mail.message_id = '<1234@message.id>'
+#  mail.message_id #=> '1234@message.id'
+"
+Mail::Message,mime_version,val,"val => String
+",String,"    def mime_version( val = nil )
+      default :mime_version, val
+    end
+","# Returns the MIME version of the email as a string
+#
+# Example:
+#
+#  mail.mime_version = '1.0'
+#  mail.mime_version #=> '1.0'
+#
+# Also allows you to set the MIME version by passing a string as a parameter.
+#
+# Example:
+#
+#  mail.mime_version '1.0'
+#  mail.mime_version #=> '1.0'
+"
+Mail::Message,mime_version=,val,"val => String
+",String,"    def mime_version=( val )
+      header[:mime_version] = val
+    end
+","# Sets the MIME version of the email by accepting a string
+#
+# Example:
+#
+#  mail.mime_version = '1.0'
+#  mail.mime_version #=> '1.0'
+"
+Mail::Message,received,val,"val => String
+",(Array<Mail::Field> or Mail::Field or String),"    def received( val = nil )
+      if val
+        header[:received] = val
+      else
+        header[:received]
+      end
+    end
+",""
+Mail::Message,received=,val,"val => String
+",String,"    def received=( val )
+      header[:received] = val
+    end
+",""
+Mail::Message,references,val,"val => String
+",(Array<String> or String),"    def references( val = nil )
+      default :references, val
+    end
+",""
+Mail::Message,references=,val,"val => String
+",String,"    def references=( val )
+      header[:references] = val
+    end
+",""
+Mail::Message,reply_to,val,"val => String
+",(Array<String> or String),"    def reply_to( val = nil )
+      default :reply_to, val
+    end
+","# Returns the Reply-To value of the mail object as an array of strings of
+# address specs.
+#
+# Example:
+#
+#  mail.reply_to = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.reply_to #=> ['mikel@test.lindsaar.net']
+#  mail.reply_to = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.reply_to #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.reply_to 'Mikel <mikel@test.lindsaar.net>'
+#  mail.reply_to #=> ['mikel@test.lindsaar.net']
+#
+# Additionally, you can append new addresses to the returned Array like
+# object.
+#
+# Example:
+#
+#  mail.reply_to 'Mikel <mikel@test.lindsaar.net>'
+#  mail.reply_to << 'ada@test.lindsaar.net'
+#  mail.reply_to #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,reply_to=,val,"val => (Array<String> or String)
+",(Array<String> or String),"    def reply_to=( val )
+      header[:reply_to] = val
+    end
+","# Sets the Reply-To value of the mail object, pass in a string of the field
+#
+# Example:
+#
+#  mail.reply_to = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.reply_to #=> ['mikel@test.lindsaar.net']
+#  mail.reply_to = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.reply_to #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,resent_bcc,val,"val => String
+",(Array<String> or String),"    def resent_bcc( val = nil )
+      default :resent_bcc, val
+    end
+","# Returns the Resent-Bcc value of the mail object as an array of strings of
+# address specs.
+#
+# Example:
+#
+#  mail.resent_bcc = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_bcc #=> ['mikel@test.lindsaar.net']
+#  mail.resent_bcc = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.resent_bcc #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.resent_bcc 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_bcc #=> ['mikel@test.lindsaar.net']
+#
+# Additionally, you can append new addresses to the returned Array like
+# object.
+#
+# Example:
+#
+#  mail.resent_bcc 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_bcc << 'ada@test.lindsaar.net'
+#  mail.resent_bcc #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,resent_bcc=,val,"val => String
+",String,"    def resent_bcc=( val )
+      header[:resent_bcc] = val
+    end
+","# Sets the Resent-Bcc value of the mail object, pass in a string of the field
+#
+# Example:
+#
+#  mail.resent_bcc = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_bcc #=> ['mikel@test.lindsaar.net']
+#  mail.resent_bcc = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.resent_bcc #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,resent_cc,val,"val => String
+",(Array<String> or String),"    def resent_cc( val = nil )
+      default :resent_cc, val
+    end
+","# Returns the Resent-Cc value of the mail object as an array of strings of
+# address specs.
+#
+# Example:
+#
+#  mail.resent_cc = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_cc #=> ['mikel@test.lindsaar.net']
+#  mail.resent_cc = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.resent_cc #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.resent_cc 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_cc #=> ['mikel@test.lindsaar.net']
+#
+# Additionally, you can append new addresses to the returned Array like
+# object.
+#
+# Example:
+#
+#  mail.resent_cc 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_cc << 'ada@test.lindsaar.net'
+#  mail.resent_cc #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,resent_cc=,val,"val => String
+",String,"    def resent_cc=( val )
+      header[:resent_cc] = val
+    end
+","# Sets the Resent-Cc value of the mail object, pass in a string of the field
+#
+# Example:
+#
+#  mail.resent_cc = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_cc #=> ['mikel@test.lindsaar.net']
+#  mail.resent_cc = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.resent_cc #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,resent_date,val,"val => String
+",(DateTime or String),"    def resent_date( val = nil )
+      default :resent_date, val
+    end
+",""
+Mail::Message,resent_date=,val,"val => String
+",String,"    def resent_date=( val )
+      header[:resent_date] = val
+    end
+",""
+Mail::Message,resent_from,val,"val => String
+",(Array<String> or String),"    def resent_from( val = nil )
+      default :resent_from, val
+    end
+","# Returns the Resent-From value of the mail object as an array of strings of
+# address specs.
+#
+# Example:
+#
+#  mail.resent_from = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_from #=> ['mikel@test.lindsaar.net']
+#  mail.resent_from = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.resent_from #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.resent_from ['Mikel <mikel@test.lindsaar.net>']
+#  mail.resent_from #=> 'mikel@test.lindsaar.net'
+#
+# Additionally, you can append new addresses to the returned Array like
+# object.
+#
+# Example:
+#
+#  mail.resent_from 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_from << 'ada@test.lindsaar.net'
+#  mail.resent_from #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,resent_from=,val,"val => String
+",String,"    def resent_from=( val )
+      header[:resent_from] = val
+    end
+","# Sets the Resent-From value of the mail object, pass in a string of the field
+#
+# Example:
+#
+#  mail.resent_from = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_from #=> ['mikel@test.lindsaar.net']
+#  mail.resent_from = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.resent_from #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,resent_message_id,val,"val => String
+",String,"    def resent_message_id( val = nil )
+      default :resent_message_id, val
+    end
+",""
+Mail::Message,resent_message_id=,val,"val => String
+",String,"    def resent_message_id=( val )
+      header[:resent_message_id] = val
+    end
+",""
+Mail::Message,resent_sender,val,"val => String
+",(Array<String> or String),"    def resent_sender( val = nil )
+      default :resent_sender, val
+    end
+","# Returns the Resent-Sender value of the mail object, as a single string of an address
+# spec.  A sender per RFC 2822 must be a single address, so you can not append to
+# this address.
+#
+# Example:
+#
+#  mail.resent_sender = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_sender #=> 'mikel@test.lindsaar.net'
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.resent_sender 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_sender #=> 'mikel@test.lindsaar.net'
+"
+Mail::Message,resent_sender=,val,"val => String
+",String,"    def resent_sender=( val )
+      header[:resent_sender] = val
+    end
+","# Sets the Resent-Sender value of the mail object, pass in a string of the field
+#
+# Example:
+#
+#  mail.resent_sender = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_sender #=> 'mikel@test.lindsaar.net'
+"
+Mail::Message,resent_to,val,"val => String
+",(Array<String> or String),"    def resent_to( val = nil )
+      default :resent_to, val
+    end
+","# Returns the Resent-To value of the mail object as an array of strings of
+# address specs.
+#
+# Example:
+#
+#  mail.resent_to = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_to #=> ['mikel@test.lindsaar.net']
+#  mail.resent_to = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.resent_to #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.resent_to 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_to #=> ['mikel@test.lindsaar.net']
+#
+# Additionally, you can append new addresses to the returned Array like
+# object.
+#
+# Example:
+#
+#  mail.resent_to 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_to << 'ada@test.lindsaar.net'
+#  mail.resent_to #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,resent_to=,val,"val => String
+",String,"    def resent_to=( val )
+      header[:resent_to] = val
+    end
+","# Sets the Resent-To value of the mail object, pass in a string of the field
+#
+# Example:
+#
+#  mail.resent_to = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.resent_to #=> ['mikel@test.lindsaar.net']
+#  mail.resent_to = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.resent_to #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,return_path,val,"val => String
+",String,"    def return_path( val = nil )
+      default :return_path, val
+    end
+","# Returns the return path of the mail object, or sets it if you pass a string
+"
+Mail::Message,return_path=,val,"val => String
+",String,"    def return_path=( val )
+      header[:return_path] = val
+    end
+","# Sets the return path of the object
+"
+Mail::Message,sender,val,"val => String
+",String,"    def sender( val = nil )
+      default :sender, val
+    end
+","# Returns the Sender value of the mail object, as a single string of an address
+# spec.  A sender per RFC 2822 must be a single address.
+#
+# Example:
+#
+#  mail.sender = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.sender #=> 'mikel@test.lindsaar.net'
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.sender 'Mikel <mikel@test.lindsaar.net>'
+#  mail.sender #=> 'mikel@test.lindsaar.net'
+"
+Mail::Message,sender=,val,"val => String
+",String,"    def sender=( val )
+      header[:sender] = val
+    end
+","# Sets the Sender value of the mail object, pass in a string of the field
+#
+# Example:
+#
+#  mail.sender = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.sender #=> 'mikel@test.lindsaar.net'
+"
+Mail::Message,smtp_envelope_from,val,"val => String
+",String,"    def smtp_envelope_from( val = nil )
+      if val
+        self.smtp_envelope_from = val
+      else
+        @smtp_envelope_from || return_path || sender || from_addrs.first
+      end
+    end
+","# Returns the SMTP Envelope From value of the mail object, as a single
+# string of an address spec.
+#
+# Defaults to Return-Path, Sender, or the first From address.
+#
+# Example:
+#
+#  mail.smtp_envelope_from = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.smtp_envelope_from #=> 'mikel@test.lindsaar.net'
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.smtp_envelope_from 'Mikel <mikel@test.lindsaar.net>'
+#  mail.smtp_envelope_from #=> 'mikel@test.lindsaar.net'
+"
+Mail::Message,smtp_envelope_from=,val,"val => String
+",String,"    def smtp_envelope_from=( val )
+      @smtp_envelope_from = val
+    end
+","# Sets the From address on the SMTP Envelope.
+#
+# Example:
+#
+#  mail.smtp_envelope_from = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.smtp_envelope_from #=> 'mikel@test.lindsaar.net'
+"
+Mail::Message,smtp_envelope_to,val,"val => String
+",(Array<%bot> or Array<String> or String),"    def smtp_envelope_to( val = nil )
+      if val
+        self.smtp_envelope_to = val
+      else
+        @smtp_envelope_to || destinations
+      end
+    end
+","# Returns the SMTP Envelope To value of the mail object.
+#
+# Defaults to #destinations: To, Cc, and Bcc addresses.
+#
+# Example:
+#
+#  mail.smtp_envelope_to = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.smtp_envelope_to #=> 'mikel@test.lindsaar.net'
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.smtp_envelope_to ['Mikel <mikel@test.lindsaar.net>', 'Lindsaar <lindsaar@test.lindsaar.net>']
+#  mail.smtp_envelope_to #=> ['mikel@test.lindsaar.net', 'lindsaar@test.lindsaar.net']
+"
+Mail::Message,smtp_envelope_to=,val,"val => String
+",Array<String>,"    def smtp_envelope_to=( val )
+      @smtp_envelope_to =
+        case val
+        when Array, NilClass
+          val
+        else
+          [val]
+        end
+    end
+","# Sets the To addresses on the SMTP Envelope.
+#
+# Example:
+#
+#  mail.smtp_envelope_to = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.smtp_envelope_to #=> 'mikel@test.lindsaar.net'
+#
+#  mail.smtp_envelope_to = ['Mikel <mikel@test.lindsaar.net>', 'Lindsaar <lindsaar@test.lindsaar.net>']
+#  mail.smtp_envelope_to #=> ['mikel@test.lindsaar.net', 'lindsaar@test.lindsaar.net']
+"
+Mail::Message,subject,val,"val => String
+",String,"    def subject( val = nil )
+      default :subject, val
+    end
+","# Returns the decoded value of the subject field, as a single string.
+#
+# Example:
+#
+#  mail.subject = ""G'Day mate""
+#  mail.subject #=> ""G'Day mate""
+#  mail.subject = '=?UTF-8?Q?This_is_=E3=81=82_string?='
+#  mail.subject #=> ""This is あ string""
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.subject ""G'Day mate""
+#  mail.subject #=> ""G'Day mate""
+"
+Mail::Message,subject=,val,"val => String
+",String,"    def subject=( val )
+      header[:subject] = val
+    end
+","# Sets the Subject value of the mail object, pass in a string of the field
+#
+# Example:
+#
+#  mail.subject = '=?UTF-8?Q?This_is_=E3=81=82_string?='
+#  mail.subject #=> ""This is あ string""
+"
+Mail::Message,to,val,"val => (Array<String> or String)
+",(Array<String> or String),"    def to( val = nil )
+      default :to, val
+    end
+","# Returns the To value of the mail object as an array of strings of
+# address specs.
+#
+# Example:
+#
+#  mail.to = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.to #=> ['mikel@test.lindsaar.net']
+#  mail.to = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.to #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+#
+# Also allows you to set the value by passing a value as a parameter
+#
+# Example:
+#
+#  mail.to 'Mikel <mikel@test.lindsaar.net>'
+#  mail.to #=> ['mikel@test.lindsaar.net']
+#
+# Additionally, you can append new addresses to the returned Array like
+# object.
+#
+# Example:
+#
+#  mail.to 'Mikel <mikel@test.lindsaar.net>'
+#  mail.to << 'ada@test.lindsaar.net'
+#  mail.to #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,to=,val,"val => (Array<String> or String)
+",(Array<String> or String),"    def to=( val )
+      header[:to] = val
+    end
+","# Sets the To value of the mail object, pass in a string of the field
+#
+# Example:
+#
+#  mail.to = 'Mikel <mikel@test.lindsaar.net>'
+#  mail.to #=> ['mikel@test.lindsaar.net']
+#  mail.to = 'Mikel <mikel@test.lindsaar.net>, ada@test.lindsaar.net'
+#  mail.to #=> ['mikel@test.lindsaar.net', 'ada@test.lindsaar.net']
+"
+Mail::Message,default,"sym, val","sym => Symbol
+val => (Array<(Hash<String, String> or String)> or Array<String> or String or Time)
+","(Array<%bot> or Array<(Hash<String, String> or String)> or Array<String> or DateTime or String or Time)","    def default( sym, val = nil )
+      if val
+        header[sym] = val
+      elsif field = header[sym]
+        field.default
+      end
+    end
+","# Returns the default value of the field requested as a symbol.
+#
+# Each header field has a :default method which returns the most common use case for
+# that field, for example, the date field types will return a DateTime object when
+# sent :default, the subject, or unstructured fields will return a decoded string of
+# their value, the address field types will return a single addr_spec or an array of
+# addr_specs if there is more than one.
+"
+Mail::Message,body=,value,"value => String
+",String,"    def body=(value)
+      body_lazy(value)
+    end
+","# Sets the body object of the message object.
+#
+# Example:
+#
+#  mail.body = 'This is the body'
+#  mail.body #=> #<Mail::Body:0x13919c @raw_source=""This is the bo...
+#
+# You can also reset the body of an Message object by setting body to nil
+#
+# Example:
+#
+#  mail.body = 'this is the body'
+#  mail.body.encoded #=> 'this is the body'
+#  mail.body = nil
+#  mail.body.encoded #=> ''
+#
+# If you try and set the body of an email that is a multipart email, then instead
+# of deleting all the parts of your email, mail will add a text/plain part to
+# your email:
+#
+#  mail.add_file 'somefilename.png'
+#  mail.parts.length #=> 1
+#  mail.body = ""This is a body""
+#  mail.parts.length #=> 2
+#  mail.parts.last.content_type.content_type #=> 'This is a body'
+"
+Mail::Message,body,value,"value => String
+",(Mail::Body or String),"    def body(value = nil)
+      if value
+        self.body = value
+      else
+        process_body_raw if @body_raw
+        @body
+      end
+    end
+","# Returns the body of the message object. Or, if passed
+# a parameter sets the value.
+#
+# Example:
+#
+#  mail = Mail::Message.new('To: mikel\r\n\r\nThis is the body')
+#  mail.body #=> #<Mail::Body:0x13919c @raw_source=""This is the bo...
+#
+#  mail.body 'This is another body'
+#  mail.body #=> #<Mail::Body:0x13919c @raw_source=""This is anothe...
+"
+Mail::Message,destinations,"","",(Array<%bot> or Array<String>),"    def destinations
+      [to_addrs, cc_addrs, bcc_addrs].compact.flatten
+    end
+","# Returns the list of addresses this message should be sent to by
+# collecting the addresses off the to, cc and bcc fields.
+#
+# Example:
+#
+#  mail.to = 'mikel@test.lindsaar.net'
+#  mail.cc = 'sam@test.lindsaar.net'
+#  mail.bcc = 'bob@test.lindsaar.net'
+#  mail.destinations.length #=> 3
+#  mail.destinations.first #=> 'mikel@test.lindsaar.net'
+"
+Mail::Message,from_addrs,"","",(Array<%bot> or Array<String>),"    def from_addrs
+      from ? [from].flatten : []
+    end
+","# Returns an array of addresses (the encoded value) in the From field,
+# if no From field, returns an empty array
+"
+Mail::Message,to_addrs,"","",(Array<%bot> or Array<String>),"    def to_addrs
+      to ? [to].flatten : []
+    end
+","# Returns an array of addresses (the encoded value) in the To field,
+# if no To field, returns an empty array
+"
+Mail::Message,cc_addrs,"","",(Array<%bot> or Array<String>),"    def cc_addrs
+      cc ? [cc].flatten : []
+    end
+","# Returns an array of addresses (the encoded value) in the Cc field,
+# if no Cc field, returns an empty array
+"
+Mail::Message,bcc_addrs,"","",(Array<%bot> or Array<String>),"    def bcc_addrs
+      bcc ? [bcc].flatten : []
+    end
+","# Returns an array of addresses (the encoded value) in the Bcc field,
+# if no Bcc field, returns an empty array
+"
+Mail::Message,[]=,"name, value","name => (String or Symbol)
+value => (Array<String> or Integer or Mail::SubjectField or String)
+",(Array<String> or Integer or Mail::SubjectField or String),"    def []=(name, value)
+      if name.to_s == 'body'
+        self.body = value
+      elsif name.to_s =~ /content[-_]type/i
+        header[name] = value
+      elsif name.to_s == 'charset'
+        self.charset = value
+      else
+        header[name] = value
+      end
+    end
+","# Allows you to add an arbitrary header
+#
+# Example:
+#
+#  mail['foo'] = '1234'
+#  mail['foo'].to_s #=> '1234'
+"
+Mail::Message,[],name,"name => (String or Symbol)
+",Mail::Field,"    def [](name)
+      header[Utilities.underscoreize(name)]
+    end
+","# Allows you to read an arbitrary header
+#
+# Example:
+#
+#  mail['foo'] = '1234'
+#  mail['foo'].to_s #=> '1234'
+"
+Mail::Message,header_fields,"","",(Array<%bot> or Array<Mail::Field>),"    def header_fields
+      header.fields
+    end
+","# Returns an FieldList of all the fields in the header in the order that
+# they appear in the header
+"
+Mail::Message,has_message_id?,"","",(false or true),"    def has_message_id?
+      header.has_message_id?
+    end
+","# Returns true if the message has a message ID field, the field may or may
+# not have a value, but the field exists or not.
+"
+Mail::Message,has_date?,"","",(false or true),"    def has_date?
+      header.has_date?
+    end
+","# Returns true if the message has a Date field, the field may or may
+# not have a value, but the field exists or not.
+"
+Mail::Message,has_mime_version?,"","",(false or true),"    def has_mime_version?
+      header.has_mime_version?
+    end
+","# Returns true if the message has a Mime-Version field, the field may or may
+# not have a value, but the field exists or not.
+"
+Mail::Message,has_content_type?,"","",(false or true),"    def has_content_type?
+      tmp = header[:content_type].main_type rescue nil
+      !!tmp
+    end
+",""
+Mail::Message,has_charset?,"","",(false or true),"    def has_charset?
+      tmp = header[:content_type].parameters rescue nil
+      !!(has_content_type? && tmp && tmp['charset'])
+    end
+",""
+Mail::Message,has_content_transfer_encoding?,"","",(false or nil or true),"    def has_content_transfer_encoding?
+      header[:content_transfer_encoding] && Utilities.blank?(header[:content_transfer_encoding].errors)
+    end
+",""
+Mail::Message,add_message_id,msg_id_val,"msg_id_val => String
+",String,"    def add_message_id(msg_id_val = '')
+      header['message-id'] = msg_id_val
+    end
+","# Creates a new empty Message-ID field and inserts it in the correct order
+# into the Header.  The MessageIdField object will automatically generate
+# a unique message ID if you try and encode it or output it to_s without
+# specifying a message id.
+#
+# It will preserve the message ID you specify if you do.
+"
+Mail::Message,add_date,date_val,"date_val => String
+",String,"    def add_date(date_val = '')
+      header['date'] = date_val
+    end
+","# Creates a new empty Date field and inserts it in the correct order
+# into the Header.  The DateField object will automatically generate
+# DateTime.now's date if you try and encode it or output it to_s without
+# specifying a date yourself.
+#
+# It will preserve any date you specify if you do.
+"
+Mail::Message,add_mime_version,ver_val,"ver_val => String
+",String,"    def add_mime_version(ver_val = '')
+      header['mime-version'] = ver_val
+    end
+","# Creates a new empty Mime Version field and inserts it in the correct order
+# into the Header.  The MimeVersion object will automatically generate
+# set itself to '1.0' if you try and encode it or output it to_s without
+# specifying a version yourself.
+#
+# It will preserve any date you specify if you do.
+"
+Mail::Message,add_content_type,"","",String,"    def add_content_type
+      header[:content_type] = 'text/plain'
+    end
+","# Adds a content type and charset if the body is US-ASCII
+#
+# Otherwise raises a warning
+"
+Mail::Message,add_charset,"","",String,"    def add_charset
+      if !body.empty?
+        # Only give a warning if this isn't an attachment, has non US-ASCII and the user
+        # has not specified an encoding explicitly.
+        if @defaulted_charset && !body.raw_source.ascii_only? && !self.attachment?
+          warning = ""Non US-ASCII detected and no charset defined.\nDefaulting to UTF-8, set your own if this is incorrect.\n""
+          warn(warning)
+        end
+        if @charset
+          header[:content_type].parameters['charset'] = @charset
+        end
+      end
+    end
+","# Adds a content type and charset if the body is US-ASCII
+#
+# Otherwise raises a warning
+"
+Mail::Message,mime_type,"","",String,"    def mime_type
+      has_content_type? ? header[:content_type].string : nil rescue nil
+    end
+","# Returns the MIME media type of part we are on, this is taken from the content-type header
+"
+Mail::Message,charset,"","",String,"    def charset
+      if @header
+        has_content_type? ? content_type_parameters['charset'] : @charset
+      else
+        @charset
+      end
+    end
+","# Returns the character set defined in the content type field
+"
+Mail::Message,charset=,value,"value => String
+",String,"    def charset=(value)
+      @defaulted_charset = false
+      @charset = value
+      @header.charset = value
+    end
+","# Sets the charset to the supplied value.
+"
+Mail::Message,main_type,"","",String,"    def main_type
+      has_content_type? ? header[:content_type].main_type : nil rescue nil
+    end
+","# Returns the main content type
+"
+Mail::Message,sub_type,"","",String,"    def sub_type
+      has_content_type? ? header[:content_type].sub_type : nil rescue nil
+    end
+","# Returns the sub content type
+"
+Mail::Message,content_type_parameters,"","","(Hash<%bot, %bot> or Hash<String, String>)","    def content_type_parameters
+      has_content_type? ? header[:content_type].parameters : nil rescue nil
+    end
+","# Returns the content type parameters
+"
+Mail::Message,multipart?,"","",(false or true),"    def multipart?
+      has_content_type? ? !!(main_type =~ /^multipart$/i) : false
+    end
+","# Returns true if the message is multipart
+"
+Mail::Message,multipart_report?,"","",(Integer or false),"    def multipart_report?
+      multipart? && sub_type =~ /^report$/i
+    end
+","# Returns true if the message is a multipart/report
+"
+Mail::Message,delivery_status_report?,"","",(Integer or false),"    def delivery_status_report?
+      multipart_report? && content_type_parameters['report-type'] =~ /^delivery-status$/i
+    end
+","# Returns true if the message is a multipart/report; report-type=delivery-status;
+"
+Mail::Message,delivery_status_part,"","",Mail::Part,"    def delivery_status_part
+      unless defined? @delivery_status_part
+        @delivery_status_part =
+          if delivery_status_report?
+            parts.detect(&:delivery_status_report_part?)
+          end
+      end
+
+      @delivery_status_part
+    end
+","# returns the part in a multipart/report email that has the content-type delivery-status
+"
+Mail::Message,bounced?,"","",(false or nil or true),"    def bounced?
+      delivery_status_part and delivery_status_part.bounced?
+    end
+",""
+Mail::Message,action,"","",String,"    def action
+      delivery_status_part and delivery_status_part.action
+    end
+",""
+Mail::Message,final_recipient,"","",String,"    def final_recipient
+      delivery_status_part and delivery_status_part.final_recipient
+    end
+",""
+Mail::Message,error_status,"","",String,"    def error_status
+      delivery_status_part and delivery_status_part.error_status
+    end
+",""
+Mail::Message,diagnostic_code,"","",String,"    def diagnostic_code
+      delivery_status_part and delivery_status_part.diagnostic_code
+    end
+",""
+Mail::Message,remote_mta,"","",String,"    def remote_mta
+      delivery_status_part and delivery_status_part.remote_mta
+    end
+",""
+Mail::Message,retryable?,"","",(false or true),"    def retryable?
+      delivery_status_part and delivery_status_part.retryable?
+    end
+",""
+Mail::Message,boundary,"","",String,"    def boundary
+      content_type_parameters ? content_type_parameters['boundary'] : nil
+    end
+","# Returns the current boundary for this message part
+"
+Mail::Message,parts,"","",Mail::PartsList,"    def parts
+      body.parts
+    end
+","# Returns a parts list object of all the parts in the message
+"
+Mail::Message,attachments,"","",(Array<%bot> or Array<Mail::Part>),"    def attachments
+      parts.attachments
+    end
+","# Returns an AttachmentsList object, which holds all of the attachments in
+# the receiver object (either the entire email or a part within) and all
+# of its descendants.
+#
+# It also allows you to add attachments to the mail object directly, like so:
+#
+#  mail.attachments['filename.jpg'] = File.read('/path/to/filename.jpg')
+#
+# If you do this, then Mail will take the file name and work out the MIME media type
+# set the Content-Type, Content-Disposition, Content-Transfer-Encoding and
+# base64 encode the contents of the attachment all for you.
+#
+# You can also specify overrides if you want by passing a hash instead of a string:
+#
+#  mail.attachments['filename.jpg'] = {:mime_type => 'application/x-gzip',
+#                                      :content => File.read('/path/to/filename.jpg')}
+#
+# If you want to use a different encoding than Base64, you can pass an encoding in,
+# but then it is up to you to pass in the content pre-encoded, and don't expect
+# Mail to know how to decode this data:
+#
+#  file_content = SpecialEncode(File.read('/path/to/filename.jpg'))
+#  mail.attachments['filename.jpg'] = {:mime_type => 'application/x-gzip',
+#                                      :encoding => 'SpecialEncoding',
+#                                      :content => file_content }
+#
+# You can also search for specific attachments:
+#
+#  # By Filename
+#  mail.attachments['filename.jpg']   #=> Mail::Part object or nil
+#
+#  # or by index
+#  mail.attachments[0]                #=> Mail::Part (first attachment)
+#
+"
+Mail::Message,has_attachments?,"","",(false or true),"    def has_attachments?
+      !attachments.empty?
+    end
+",""
+Mail::Message,html_part,block,"block => nil
+",Mail::Message,"    def html_part(&block)
+      if block_given?
+        self.html_part = Mail::Part.new(:content_type => 'text/html', &block)
+      else
+        @html_part || find_first_mime_type('text/html')
+      end
+    end
+","# Accessor for html_part
+"
+Mail::Message,text_part,block,"block => nil
+",Mail::Message,"    def text_part(&block)
+      if block_given?
+        self.text_part = Mail::Part.new(:content_type => 'text/plain', &block)
+      else
+        @text_part || find_first_mime_type('text/plain')
+      end
+    end
+","# Accessor for text_part
+"
+Mail::Message,html_part=,msg,"msg => (Mail::Message or String)
+",(Array<Mail::Message> or Array<Mail::Part>),"    def html_part=(msg)
+      # Assign the html part and set multipart/alternative if there's a text part.
+      if msg
+        msg = Mail::Part.new(:body => msg) unless msg.kind_of?(Mail::Message)
+
+        @html_part = msg
+        @html_part.content_type = 'text/html' unless @html_part.has_content_type?
+        add_multipart_alternate_header if text_part
+        add_part @html_part
+
+      # If nil, delete the html part and back out of multipart/alternative.
+      elsif @html_part
+        parts.delete_if { |p| p.object_id == @html_part.object_id }
+        @html_part = nil
+        if text_part
+          self.content_type = nil
+          body.boundary = nil
+        end
+      end
+    end
+","# Helper to add a html part to a multipart/alternative email.  If this and
+# text_part are both defined in a message, then it will be a multipart/alternative
+# message and set itself that way.
+"
+Mail::Message,text_part=,msg,"msg => (Mail::Message or String)
+",(Array<Mail::Message> or Array<Mail::Part>),"    def text_part=(msg)
+      # Assign the text part and set multipart/alternative if there's an html part.
+      if msg
+        msg = Mail::Part.new(:body => msg) unless msg.kind_of?(Mail::Message)
+
+        @text_part = msg
+        @text_part.content_type = 'text/plain' unless @text_part.has_content_type?
+        add_multipart_alternate_header if html_part
+        add_part @text_part
+
+      # If nil, delete the text part and back out of multipart/alternative.
+      elsif @text_part
+        parts.delete_if { |p| p.object_id == @text_part.object_id }
+        @text_part = nil
+        if html_part
+          self.content_type = nil
+          body.boundary = nil
+        end
+      end
+    end
+","# Helper to add a text part to a multipart/alternative email.  If this and
+# html_part are both defined in a message, then it will be a multipart/alternative
+# message and set itself that way.
+"
+Mail::Message,add_part,part,"part => Mail::Message
+",(Array<Mail::Message> or Array<Mail::Part>),"    def add_part(part)
+      if !body.multipart? && !Utilities.blank?(self.body.decoded)
+        @text_part = Mail::Part.new('Content-Type: text/plain;')
+        @text_part.body = body.decoded
+        self.body << @text_part
+        add_multipart_alternate_header
+      end
+      add_boundary
+      self.body << part
+    end
+","# Adds a part to the parts list or creates the part list
+"
+Mail::Message,part,params,"params => (Hash<%bot, %bot> or Hash<Symbol, (Hash<String, String> or String)> or Hash<Symbol, String> or String)
+",Array<Mail::Part>,"    def part(params = {})
+      new_part = Part.new(params)
+      yield new_part if block_given?
+      add_part(new_part)
+    end
+","# Allows you to add a part in block form to an existing mail message object
+#
+# Example:
+#
+#  mail = Mail.new do
+#    part :content_type => ""multipart/alternative"", :content_disposition => ""inline"" do |p|
+#      p.part :content_type => ""text/plain"", :body => ""test text\nline #2""
+#      p.part :content_type => ""text/html"", :body => ""<b>test</b> HTML<br/>\nline #2""
+#    end
+#  end
+"
+Mail::Message,add_file,values,"values => (Hash<%bot, %bot> or String)
+","(Hash<%bot, %bot> or String)","    def add_file(values)
+      convert_to_multipart unless self.multipart? || Utilities.blank?(self.body.decoded)
+      add_multipart_mixed_header
+      if values.is_a?(String)
+        basename = File.basename(values)
+        filedata = File.open(values, 'rb') { |f| f.read }
+      else
+        basename = values[:filename]
+        filedata = values
+      end
+      self.attachments[basename] = filedata
+    end
+","# Adds a file to the message.  You have two options with this method, you can
+# just pass in the absolute path to the file you want and Mail will read the file,
+# get the filename from the path you pass in and guess the MIME media type, or you
+# can pass in the filename as a string, and pass in the file content as a blob.
+#
+# Example:
+#
+#  m = Mail.new
+#  m.add_file('/path/to/filename.png')
+#
+#  m = Mail.new
+#  m.add_file(:filename => 'filename.png', :content => File.read('/path/to/file.jpg'))
+#
+# Note also that if you add a file to an existing message, Mail will convert that message
+# to a MIME multipart email, moving whatever plain text body you had into its own text
+# plain part.
+#
+# Example:
+#
+#  m = Mail.new do
+#    body 'this is some text'
+#  end
+#  m.multipart? #=> false
+#  m.add_file('/path/to/filename.png')
+#  m.multipart? #=> true
+#  m.parts.first.content_type.content_type #=> 'text/plain'
+#  m.parts.last.content_type.content_type #=> 'image/png'
+#
+# See also #attachments
+"
+Mail::Message,convert_to_multipart,"","",Array<Mail::Part>,"    def convert_to_multipart
+      text_part = Mail::Part.new(:body => body.decoded)
+
+      MULTIPART_CONVERSION_CONTENT_FIELDS.each do |field_name|
+        if value = send(field_name)
+          writer = :""#{field_name}=""
+          text_part.send writer, value
+          send writer, nil
+        end
+      end
+      text_part.charset = charset unless @defaulted_charset
+
+      self.body = ''
+      self.body << text_part
+    end
+",""
+Mail::Message,ready_to_send!,"","",String,"    def ready_to_send!
+      identify_and_set_transfer_encoding
+      parts.each do |part|
+        part.transport_encoding = transport_encoding
+        part.ready_to_send!
+      end
+      add_required_fields
+    end
+","# Encodes the message, calls encode on all its parts, gets an email message
+# ready to send
+"
+Mail::Message,encoded,"","",String,"    def encoded
+      ready_to_send!
+      buffer = header.encoded
+      buffer << ""\r\n""
+      buffer << body.encoded(content_transfer_encoding)
+      buffer
+    end
+","# Outputs an encoded string representation of the mail message including
+# all headers, attachments, etc.  This is an encoded email in US-ASCII,
+# so it is able to be directly sent to an email server.
+"
+Mail::Message,without_attachments!,"","",Mail::Message,"    def without_attachments!
+      if has_attachments?
+        parts.delete_attachments
+
+        reencoded = parts.empty? ? '' : body.encoded(content_transfer_encoding)
+        @body = nil # So the new parts won't be added to the existing body
+        self.body = reencoded
+      end
+
+      self
+    end
+",""
+Mail::Message,to_yaml,opts,"opts => Hash<%bot, %bot>
+",String,"    def to_yaml(opts = {})
+      hash = {}
+      hash['headers'] = {}
+      header.fields.each do |field|
+        hash['headers'][field.name] = field.value
+      end
+      hash['delivery_handler'] = delivery_handler.to_s if delivery_handler
+      hash['transport_encoding'] = transport_encoding.to_s
+      special_variables = [:@header, :@delivery_handler, :@transport_encoding]
+      if multipart?
+        hash['multipart_body'] = []
+        body.parts.map { |part| hash['multipart_body'] << part.to_yaml }
+        special_variables.push(:@body, :@text_part, :@html_part)
+      end
+      (instance_variables.map(&:to_sym) - special_variables).each do |var|
+        hash[var.to_s] = instance_variable_get(var)
+      end
+      hash.to_yaml(opts)
+    end
+",""
+Mail::Message,to_s,"","",String,"    def to_s
+      encoded
+    end
+",""
+Mail::Message,inspect,"","",String,"    def inspect
+      ""#<#{self.class}:#{self.object_id}, Multipart: #{multipart?}, Headers: #{header.field_summary}>""
+    end
+",""
+Mail::Message,inspect_structure,"","",String,"    def inspect_structure
+      inspect +
+      if self.multipart?
+        ""\n"" + parts.inspect_structure
+      else
+        ''
+      end
+    end
+",""
+Mail::Message,decoded,"","",String,"    def decoded
+      case
+      when self.text?
+        decode_body_as_text
+      when self.attachment?
+        decode_body
+      when !self.multipart?
+        body.decoded
+      else
+        raise NoMethodError, 'Can not decode an entire message, try calling #decoded on the various fields and body or parts if it is a multipart message.'
+      end
+    end
+",""
+Mail::Message,read,"","",String,"    def read
+      if self.attachment?
+        decode_body
+      else
+        raise NoMethodError, 'Can not call read on a part unless it is an attachment.'
+      end
+    end
+",""
+Mail::Message,decode_body,"","",String,"    def decode_body
+      body.decoded
+    end
+",""
+Mail::Message,attachment?,"","",(false or true),"    def attachment?
+      !!find_attachment
+    end
+","# Returns true if this part is an attachment,
+# false otherwise.
+"
+Mail::Message,filename,"","",String,"    def filename
+      find_attachment
+    end
+","# Returns the filename of the attachment
+"
+Mail::Message,all_parts,"","",(Array<%bot> or Array<Mail::Part>),"    def all_parts
+      parts.map { |p| [p, p.all_parts] }.flatten
+    end
+",""
+Mail::Message,find_first_mime_type,mt,"mt => String
+",Mail::Part,"    def find_first_mime_type(mt)
+      all_parts.detect { |p| p.mime_type == mt && !p.attachment? }
+    end
+",""
+Mail::Message,mark_for_delete=,value,"value => (false or true)
+",(false or true),"    def mark_for_delete=(value = true)
+      @mark_for_delete = value
+    end
+","# Sets whether this message should be deleted at session close (i.e.
+# after #find). Message will only be deleted if messages are retrieved
+# using the #find_and_delete method, or by calling #find with
+# :delete_after_find set to true.
+"
+Mail::Message,is_marked_for_delete?,"","",(false or true),"    def is_marked_for_delete?
+      return @mark_for_delete
+    end
+","# Returns whether message will be marked for deletion.
+# If so, the message will be deleted at session close (i.e. after #find
+# exits), but only if also using the #find_and_delete method, or by
+# calling #find with :delete_after_find set to true.
+#
+# Side-note: Just to be clear, this method will return true even if
+# the message hasn't yet been marked for delete on the mail server.
+# However, if this method returns true, it *will be* marked on the
+# server after each block yields back to #find or #find_and_delete.
+"
+Mail::Message,text?,"","",(false or true),"    def text?
+      has_content_type? ? !!(main_type =~ /^text$/i) : false
+    end
+",""
+Mail::Message,parse_message,"","",String,"    def parse_message
+      header_part, body_part = raw_source.lstrip.split(HEADER_SEPARATOR, 2)
+      self.header = header_part
+      self.body   = body_part
+    end
+","#  2.1. General Description
+#   A message consists of header fields (collectively called ""the header
+#   of the message"") followed, optionally, by a body.  The header is a
+#   sequence of lines of characters with special syntax as defined in
+#   this standard. The body is simply a sequence of characters that
+#   follows the header and is separated from the header by an empty line
+#   (i.e., a line with nothing preceding the CRLF).
+"
+Mail::Message,raw_source=,value,"value => String
+",String,"    def raw_source=(value)
+      @raw_source = value
+    end
+",""
+Mail::Message,body_lazy,value,"value => String
+",String,"    def body_lazy(value)
+      process_body_raw if @body_raw && value
+      case
+      when value == nil || value.length<=0
+        @body = Mail::Body.new('')
+        @body_raw = nil
+        add_encoding_to_body
+      when @body && @body.multipart?
+        self.text_part = value
+      else
+        @body_raw = value
+      end
+    end
+","# see comments to body=. We take data and process it lazily
+"
+Mail::Message,process_body_raw,"","",String,"    def process_body_raw
+      @body = Mail::Body.new(@body_raw)
+      @body_raw = nil
+      separate_parts if @separate_parts
+
+      add_encoding_to_body
+    end
+",""
+Mail::Message,set_envelope_header,"","",String,"    def set_envelope_header
+      raw_string = raw_source.to_s
+      if match_data = raw_string.match(/\AFrom\s+([^:\s]#{Constants::TEXT}*)#{Constants::LAX_CRLF}/m)
+        set_envelope(match_data[1])
+        self.raw_source = raw_string.sub(match_data[0], """")
+      end
+    end
+",""
+Mail::Message,separate_parts,"","",Mail::Body,"    def separate_parts
+      body.split!(boundary)
+    end
+",""
+Mail::Message,allowed_encodings,"","",Array<Class>,"    def allowed_encodings
+      case mime_type
+      when 'message/rfc822'
+        [Encodings::SevenBit, Encodings::EightBit, Encodings::Binary]
+      end
+    end
+",""
+Mail::Message,add_encoding_to_body,"","",String,"    def add_encoding_to_body
+      if has_content_transfer_encoding?
+        @body.encoding = content_transfer_encoding
+      end
+    end
+",""
+Mail::Message,identify_and_set_transfer_encoding,"","",(Class or String),"    def identify_and_set_transfer_encoding
+      if body
+        if body.multipart?
+          self.content_transfer_encoding = @transport_encoding
+        else
+          self.content_transfer_encoding = body.negotiate_best_encoding(@transport_encoding, allowed_encodings).to_s
+        end
+      end
+    end
+",""
+Mail::Message,add_required_fields,"","",nil,"    def add_required_fields
+      add_required_message_fields
+      add_multipart_mixed_header    if body.multipart?
+      add_content_type              unless has_content_type?
+      add_charset                   if text? && !has_charset?
+      add_content_transfer_encoding unless has_content_transfer_encoding?
+    end
+",""
+Mail::Message,add_required_message_fields,"","",String,"    def add_required_message_fields
+      add_date          unless has_date?
+      add_mime_version  unless has_mime_version?
+      add_message_id    unless has_message_id?
+    end
+",""
+Mail::Message,add_multipart_alternate_header,"","",String,"    def add_multipart_alternate_header
+      header['content-type'] = ContentTypeField.with_boundary('multipart/alternative').value
+      body.boundary = boundary
+    end
+",""
+Mail::Message,add_boundary,"","",String,"    def add_boundary
+      unless body.boundary && boundary
+        header['content-type'] = 'multipart/mixed' unless header['content-type']
+        header['content-type'].parameters[:boundary] = ContentTypeField.generate_boundary
+        body.boundary = boundary
+      end
+    end
+",""
+Mail::Message,add_multipart_mixed_header,"","",String,"    def add_multipart_mixed_header
+      unless header['content-type']
+        header['content-type'] = ContentTypeField.with_boundary('multipart/mixed').value
+        body.boundary = boundary
+      end
+    end
+",""
+Mail::Message,init_with_hash,hash,"hash => (Hash<%bot, %bot> or Hash<String, String> or Hash<Symbol, (Array<String> or String)> or Hash<Symbol, (Hash<String, String> or String)> or Hash<Symbol, Array<String>> or Hash<Symbol, Hash<String, String>> or Hash<Symbol, String>)
+",String,"    def init_with_hash(hash)
+      passed_in_options = IndifferentHash.new(hash)
+      self.raw_source = ''
+
+      @header = Mail::Header.new
+      @body = Mail::Body.new
+      @body_raw = nil
+
+      # We need to store the body until last, as we need all headers added first
+      body_content = nil
+
+      passed_in_options.each_pair do |k,v|
+        k = Utilities.underscoreize(k).to_sym if k.class == String
+        if k == :headers
+          self.headers(v)
+        elsif k == :body
+          body_content = v
+        else
+          self[k] = v
+        end
+      end
+
+      if body_content
+        self.body = body_content
+        if has_content_transfer_encoding?
+            body.encoding = content_transfer_encoding
+        end
+      end
+    end
+",""
+Mail::Message,init_with_string,string,"string => String
+",(false or true),"    def init_with_string(string)
+      self.raw_source = string
+      set_envelope_header
+      parse_message
+      @separate_parts = multipart?
+    end
+",""
+Mail::Message,find_attachment,"","",String,"    def find_attachment
+      content_type_name = header[:content_type].filename rescue nil
+      content_disp_name = header[:content_disposition].filename rescue nil
+      content_loc_name  = header[:content_location].location rescue nil
+      case
+      when content_disposition && content_disp_name
+        filename = content_disp_name
+      when content_type && content_type_name
+        filename = content_type_name
+      when content_location && content_loc_name
+        filename = content_loc_name
+      else
+        filename = nil
+      end
+      filename = Mail::Encodings.decode_encode(filename, :decode) if filename rescue filename
+      filename
+    end
+","# Returns the filename of the attachment (if it exists) or returns nil
+"
+Mail::Message,do_delivery,"","",(Array<Mail::Message> or Array<String> or Mail::SMTP or Mail::SMTPConnection or String),"    def do_delivery
+      begin
+        if perform_deliveries
+          delivery_method.deliver!(self)
+        end
+      rescue => e # Net::SMTP errors or sendmail pipe errors
+        raise e if raise_delivery_errors
+      end
+    end
+",""
+Mail::Message,decode_body_as_text,"","",String,"    def decode_body_as_text
+      Encodings.transcode_charset decode_body, charset, 'UTF-8'
+    end
+",""
+Mail::AttachmentsList,initialize,parts_list,"parts_list => (Array<%bot> or Array<Mail::Part>)
+",(Array<%bot> or Array<Mail::Part>),"    def initialize(parts_list)
+      @parts_list = parts_list
+      @content_disposition_type = 'attachment'
+      parts_list.map { |p|
+        if p.mime_type == 'message/rfc822'
+          Mail.new(p.body.encoded).attachments
+        elsif p.parts.empty?
+          p if p.attachment?
+        else
+          p.attachments
+        end
+      }.flatten.compact.each { |a| self << a }
+      self
+    end
+",""
+Mail::AttachmentsList,inline,"","",(Array<%bot> or Array<Mail::Part>),"    def inline
+      @content_disposition_type = 'inline'
+      self
+    end
+",""
+Mail::AttachmentsList,[],index_value,"index_value => (Integer or String)
+",Mail::Part,"    def [](index_value)
+      if index_value.is_a?(Integer)
+        self.fetch(index_value)
+      else
+        self.select { |a| a.filename == index_value }.first
+      end
+    end
+","# Returns the attachment by filename or at index.
+#
+# mail.attachments['test.png'] = File.read('test.png')
+# mail.attachments['test.jpg'] = File.read('test.jpg')
+#
+# mail.attachments['test.png'].filename #=> 'test.png'
+# mail.attachments[1].filename          #=> 'test.jpg'
+"
+Mail::AttachmentsList,[]=,"name, value","name => String
+value => (Hash<%bot, %bot> or Hash<Symbol, String> or String)
+",Array<Mail::Part>,"    def []=(name, value)
+      encoded_name = Mail::Encodings.decode_encode name, :encode
+      default_values = { :content_type => ""#{set_mime_type(name)}; filename=\""#{encoded_name}\"""",
+                         :content_transfer_encoding => ""#{guess_encoding}"",
+                         :content_disposition => ""#{@content_disposition_type}; filename=\""#{encoded_name}\"""" }
+
+      if value.is_a?(Hash)
+        if path = value.delete(:filename)
+          value[:content] ||= File.open(path, 'rb') { |f| f.read }
+        end
+
+        default_values[:body] = value.delete(:content) if value[:content]
+
+        default_values[:body] = value.delete(:data) if value[:data]
+
+        encoding = value.delete(:transfer_encoding) || value.delete(:encoding)
+        if encoding
+          if Mail::Encodings.defined? encoding
+            default_values[:content_transfer_encoding] = encoding
+          else
+            raise ""Do not know how to handle Content Transfer Encoding #{encoding}, please choose either quoted-printable or base64""
+          end
+        end
+
+        if value[:mime_type]
+          default_values[:content_type] = value.delete(:mime_type)
+          @mime_type = MiniMime.lookup_by_content_type(default_values[:content_type])
+          default_values[:content_transfer_encoding] ||= guess_encoding
+        end
+
+        hash = default_values.merge(value)
+      else
+        default_values[:body] = value
+        hash = default_values
+      end
+
+      if hash[:body].respond_to? :force_encoding and hash[:body].respond_to? :valid_encoding?
+        if not hash[:body].valid_encoding? and default_values[:content_transfer_encoding].casecmp('binary').zero?
+          hash[:body] = hash[:body].dup if hash[:body].frozen?
+          hash[:body].force_encoding(""BINARY"")
+        end
+      end
+
+      attachment = Part.new(hash)
+      attachment.add_content_id(hash[:content_id])
+
+      @parts_list << attachment
+    end
+",""
+Mail::AttachmentsList,guess_encoding,"","",String,"    def guess_encoding
+      if @mime_type && !@mime_type.binary?
+        ""7bit""
+      else
+        ""binary""
+      end
+    end
+","# Uses the mime type to try and guess the encoding, if it is a binary type, or unknown, then we
+# set it to binary, otherwise as set to plain text
+"
+Mail::AttachmentsList,set_mime_type,filename,"filename => String
+",String,"    def set_mime_type(filename)
+      # Have to do this because MIME::Types is not Ruby 1.9 safe yet
+      if RUBY_VERSION >= '1.9'
+        filename = filename.encode(Encoding::UTF_8) if filename.respond_to?(:encode)
+      end
+
+      @mime_type = MiniMime.lookup_by_filename(filename)
+      @mime_type && @mime_type.content_type
+    end
+",""
+Mail::Body,initialize,string,"string => (Array<String> or String)
+",String,"    def initialize(string = '')
+      @boundary = nil
+      @preamble = nil
+      @epilogue = nil
+      @charset  = nil
+      @part_sort_order = [ ""text/plain"", ""text/enriched"", ""text/html"", ""multipart/alternative"" ]
+      @parts = Mail::PartsList.new
+      if Utilities.blank?(string)
+        @raw_source = ''
+      else
+        # Do join first incase we have been given an Array in Ruby 1.9
+        if string.respond_to?(:join)
+          @raw_source = ::Mail::Utilities.to_crlf(string.join(''))
+        elsif string.respond_to?(:to_s)
+          @raw_source = ::Mail::Utilities.to_crlf(string.to_s)
+        else
+          raise ""You can only assign a string or an object that responds_to? :join or :to_s to a body.""
+        end
+      end
+      @encoding = default_encoding
+      set_charset
+    end
+",""
+Mail::Body,init_with,coder,"coder => Psych::Coder
+",Mail::PartsList,"    def init_with(coder)
+      coder.map.each { |k, v| instance_variable_set(:""@#{k}"", v) }
+      @parts = Mail::PartsList.new(coder['parts'])
+    end
+",""
+Mail::Body,==,other,"other => (Mail::Body or String)
+",(false or true),"    def ==(other)
+      if other.class == String
+        self.decoded == other
+      else
+        super
+      end
+    end
+","# Matches this body with another body.  Also matches the decoded value of this
+# body with a string.
+# 
+# Examples:
+# 
+#   body = Mail::Body.new('The body')
+#   body == body #=> true
+#   
+#   body = Mail::Body.new('The body')
+#   body == 'The body' #=> true
+#   
+#   body = Mail::Body.new(""VGhlIGJvZHk=\n"")
+#   body.encoding = 'base64'
+#   body == ""The body"" #=> true
+"
+Mail::Body,=~,regexp,"regexp => Regexp
+",Integer,"    def =~(regexp)
+      self.decoded =~ regexp
+    end
+","# Accepts a string and performs a regular expression against the decoded text
+# 
+# Examples:
+# 
+#   body = Mail::Body.new('The body')
+#   body =~ /The/ #=> 0
+#   
+#   body = Mail::Body.new(""VGhlIGJvZHk=\n"")
+#   body.encoding = 'base64'
+#   body =~ /The/ #=> 0
+"
+Mail::Body,match,regexp,"regexp => Regexp
+",MatchData,"    def match(regexp)
+      self.decoded.match(regexp)
+    end
+","# Accepts a string and performs a regular expression against the decoded text
+# 
+# Examples:
+# 
+#   body = Mail::Body.new('The body')
+#   body.match(/The/) #=> #<MatchData ""The"">
+#   
+#   body = Mail::Body.new(""VGhlIGJvZHk=\n"")
+#   body.encoding = 'base64'
+#   body.match(/The/) #=> #<MatchData ""The"">
+"
+Mail::Body,include?,other,"other => String
+",true,"    def include?(other)
+      self.decoded.include?(other.to_s)
+    end
+","# Accepts anything that responds to #to_s and checks if it's a substring of the decoded text
+#
+# Examples:
+#
+#   body = Mail::Body.new('The body')
+#   body.include?('The') #=> true
+#
+#   body = Mail::Body.new(""VGhlIGJvZHk=\n"")
+#   body.encoding = 'base64'
+#   body.include?('The') #=> true
+"
+Mail::Body,set_sort_order,order,"order => (Array<%bot> or Array<String>)
+",(Array<%bot> or Array<String>),"    def set_sort_order(order)
+      @part_sort_order = order
+    end
+","# Allows you to set the sort order of the parts, overriding the default sort order.
+# Defaults to 'text/plain', then 'text/enriched', then 'text/html', then 'multipart/alternative'
+# with any other content type coming after.
+"
+Mail::Body,sort_parts!,"","",(Array<%bot> or Array<Mail::Part>),"    def sort_parts!
+      @parts.each do |p|
+        p.body.set_sort_order(@part_sort_order)
+        p.body.sort_parts!
+      end
+      @parts.sort!(@part_sort_order)
+    end
+","# Allows you to sort the parts according to the default sort order, or the sort order you
+# set with :set_sort_order.
+#
+# sort_parts! is also called from :encode, so there is no need for you to call this explicitly
+"
+Mail::Body,negotiate_best_encoding,"message_encoding, allowed_encodings","message_encoding => (Class or String)
+allowed_encodings => Array<Class>
+",Class,"    def negotiate_best_encoding(message_encoding, allowed_encodings = nil)
+      Mail::Encodings::TransferEncoding.negotiate(message_encoding, encoding, raw_source, allowed_encodings)
+    end
+",""
+Mail::Body,encoded,transfer_encoding,"transfer_encoding => String
+",String,"    def encoded(transfer_encoding = nil)
+      if multipart?
+        self.sort_parts!
+        encoded_parts = parts.map { |p| p.encoded }
+        ([preamble] + encoded_parts).join(crlf_boundary) + end_boundary + epilogue.to_s
+      else
+        dec = Mail::Encodings.get_encoding(encoding)
+        enc =
+          if Utilities.blank?(transfer_encoding)
+            dec
+          else
+            negotiate_best_encoding(transfer_encoding)
+          end
+
+        if dec.nil?
+          # Cannot decode, so skip normalization
+          raw_source
+        else
+          # Decode then encode to normalize and allow transforming 
+          # from base64 to Q-P and vice versa
+          decoded = dec.decode(raw_source)
+          if defined?(Encoding) && charset && charset != ""US-ASCII""
+            decoded = decoded.encode(charset)
+            decoded.force_encoding('BINARY') unless Encoding.find(charset).ascii_compatible?
+          end
+          enc.encode(decoded)
+        end
+      end
+    end
+","# Returns a body encoded using transfer_encoding.  Multipart always uses an
+# identiy encoding (i.e. no encoding).
+# Calling this directly is not a good idea, but supported for compatibility
+# TODO: Validate that preamble and epilogue are valid for requested encoding
+"
+Mail::Body,decoded,"","",String,"    def decoded
+      if !Encodings.defined?(encoding)
+        raise UnknownEncodingType, ""Don't know how to decode #{encoding}, please call #encoded and decode it yourself.""
+      else
+        Encodings.get_encoding(encoding).decode(raw_source)
+      end
+    end
+",""
+Mail::Body,to_s,"","",String,"    def to_s
+      decoded
+    end
+",""
+Mail::Body,encoding,val,"val => nil
+",String,"    def encoding(val = nil)
+      if val
+        self.encoding = val
+      else
+        @encoding
+      end
+    end
+",""
+Mail::Body,encoding=,val,"val => String
+",String,"    def encoding=( val )
+      @encoding =
+        if val == ""text"" || Utilities.blank?(val)
+          default_encoding
+        else
+          val
+        end
+    end
+",""
+Mail::Body,multipart?,"","",(nil or true),"    def multipart?
+      true unless parts.empty?
+    end
+","# Returns true if there are parts defined in the body
+"
+Mail::Body,<<,val,"val => Mail::Message
+",(Array<Mail::Message> or Array<Mail::Part>),"    def <<( val )
+      if @parts
+        @parts << val
+      else
+        @parts = Mail::PartsList.new[val]
+      end
+    end
+",""
+Mail::Body,split!,boundary,"boundary => String
+",Mail::Body,"    def split!(boundary)
+      self.boundary = boundary
+      parts = extract_parts
+
+      # Make the preamble equal to the preamble (if any)
+      self.preamble = parts[0].to_s.strip
+      # Make the epilogue equal to the epilogue (if any)
+      self.epilogue = parts[-1].to_s.strip
+      parts[1...-1].to_a.each { |part| @parts << Mail::Part.new(part) }
+      self
+    end
+",""
+Mail::Body,ascii_only?,"","",(false or true),"    def ascii_only?
+      unless defined? @ascii_only
+        @ascii_only = raw_source.ascii_only?
+      end
+      @ascii_only
+    end
+",""
+Mail::Body,empty?,"","",(false or true),"    def empty?
+      !!raw_source.to_s.empty?
+    end
+",""
+Mail::Body,default_encoding,"","",String,"    def default_encoding
+      ascii_only? ? '7bit' : '8bit'
+    end
+",""
+Mail::Body,extract_parts,"","",Array<String>,"    def extract_parts
+      parts_regex = /
+        (?:                    # non-capturing group
+          \A                |  # start of string OR
+          \r\n                 # line break
+         )
+        (
+          --#{Regexp.escape(boundary || """")}  # boundary delimiter
+          (?:--)?                             # with non-capturing optional closing
+        )
+        (?=\s*$)                              # lookahead matching zero or more spaces followed by line-ending
+      /x
+      parts = raw_source.split(parts_regex).each_slice(2).to_a
+      parts.each_with_index { |(part, _), index| parts.delete_at(index) if index > 0 && Utilities.blank?(part) }
+
+      if parts.size > 1
+        final_separator = parts[-2][1]
+        parts << [""""] if final_separator != ""--#{boundary}--""
+      end
+      parts.map(&:first)
+    end
+","# split parts by boundary, ignore first part if empty, append final part when closing boundary was missing
+"
+Mail::Body,crlf_boundary,"","",String,"    def crlf_boundary
+      ""\r\n--#{boundary}\r\n""
+    end
+",""
+Mail::Body,end_boundary,"","",String,"    def end_boundary
+      ""\r\n--#{boundary}--\r\n""
+    end
+",""
+Mail::Body,set_charset,"","",String,"    def set_charset
+      @charset = ascii_only? ? 'US-ASCII' : nil
+    end
+",""
+Mail::Header,initialize,"header_text, charset","header_text => String
+charset => String
+",Array<String>,"    def initialize(header_text = nil, charset = nil)
+      @charset = charset
+      @raw_source = ::Mail::Utilities.to_crlf(header_text).lstrip
+      split_header if header_text
+    end
+","# Creates a new header object.
+#
+# Accepts raw text or nothing.  If given raw text will attempt to parse
+# it and split it into the various fields, instantiating each field as
+# it goes.
+#
+# If it finds a field that should be a structured field (such as content
+# type), but it fails to parse it, it will simply make it an unstructured
+# field and leave it alone.  This will mean that the data is preserved but
+# no automatic processing of that field will happen.  If you find one of
+# these cases, please make a patch and send it in, or at the least, send
+# me the example so we can fix it.
+"
+Mail::Header,initialize_copy,original,"original => Mail::Header
+",(Array<%bot> or Array<Mail::Field>),"    def initialize_copy(original)
+      super
+      @fields = @fields.dup
+      @fields.map!(&:dup)
+    end
+",""
+Mail::Header,fields,"","",(Array<%bot> or Array<Mail::Field>),"    def fields
+      @fields ||= FieldList.new
+    end
+","# Returns an array of all the fields in the header in order that they
+# were read in.
+"
+Mail::Header,fields=,unfolded_fields,"unfolded_fields => Array<String>
+",Array<String>,"    def fields=(unfolded_fields)
+      @fields = Mail::FieldList.new
+
+      if unfolded_fields.size > self.class.maximum_amount
+        Kernel.warn ""WARNING: More than #{self.class.maximum_amount} header fields; only using the first #{self.class.maximum_amount} and ignoring the rest""
+        unfolded_fields = unfolded_fields.slice(0...self.class.maximum_amount)
+      end
+
+      unfolded_fields.each do |field|
+        if field = Field.parse(field, charset)
+          @fields.add_field field
+        end
+      end
+    end
+","#  3.6. Field definitions
+#
+#   It is important to note that the header fields are not guaranteed to
+#   be in a particular order.  They may appear in any order, and they
+#   have been known to be reordered occasionally when transported over
+#   the Internet.  However, for the purposes of this standard, header
+#   fields SHOULD NOT be reordered when a message is transported or
+#   transformed.  More importantly, the trace header fields and resent
+#   header fields MUST NOT be reordered, and SHOULD be kept in blocks
+#   prepended to the message.  See sections 3.6.6 and 3.6.7 for more
+#   information.
+#
+# Populates the fields container with Field objects in the order it
+# receives them in.
+#
+# Acceps an array of field string values, for example:
+#
+#  h = Header.new
+#  h.fields = ['From: mikel@me.com', 'To: bob@you.com']
+"
+Mail::Header,errors,"","",Array<Array<(Mail::Field::IncompleteParseError or String)>>,"    def errors
+      @fields.map(&:errors).flatten(1)
+    end
+",""
+Mail::Header,[],name,"name => (String or Symbol)
+",(Array<Mail::Field> or Mail::Field),"    def [](name)
+      fields.get_field(Utilities.dasherize(name))
+    end
+","#  3.6. Field definitions
+#
+#   The following table indicates limits on the number of times each
+#   field may occur in a message header as well as any special
+#   limitations on the use of those fields.  An asterisk next to a value
+#   in the minimum or maximum column indicates that a special restriction
+#   appears in the Notes column.
+#
+#   <snip table from 3.6>
+#
+# As per RFC, many fields can appear more than once, we will return a string
+# of the value if there is only one header, or if there is more than one
+# matching header, will return an array of values in order that they appear
+# in the header ordered from top to bottom.
+#
+# Example:
+#
+#  h = Header.new
+#  h.fields = ['To: mikel@me.com', 'X-Mail-SPAM: 15', 'X-Mail-SPAM: 20']
+#  h['To']          #=> 'mikel@me.com'
+#  h['X-Mail-SPAM'] #=> ['15', '20']
+"
+Mail::Header,[]=,"name, value","name => (String or Symbol)
+value => (Array<(Hash<String, String> or String)> or Array<(Hash<Symbol, String> or String)> or Array<String> or Class or Integer or Mail::SubjectField or String or Time)
+",(Array<%bot> or Array<Mail::Field> or String),"    def []=(name, value)
+      name = name.to_s
+      if name.include?(Constants::COLON)
+        raise ArgumentError, ""Header names may not contain a colon: #{name.inspect}""
+      end
+
+      name = Utilities.dasherize(name)
+
+      # Assign nil to delete the field
+      if value.nil?
+        fields.delete_field name
+      else
+        fields.add_field Field.new(name.to_s, value, charset)
+
+        # Update charset if specified in Content-Type
+        if name == 'content-type'
+          params = self[:content_type].parameters rescue nil
+          @charset = params[:charset] if params && params[:charset]
+        end
+      end
+    end
+","# Sets the FIRST matching field in the header to passed value, or deletes
+# the FIRST field matched from the header if passed nil
+#
+# Example:
+#
+#  h = Header.new
+#  h.fields = ['To: mikel@me.com', 'X-Mail-SPAM: 15', 'X-Mail-SPAM: 20']
+#  h['To'] = 'bob@you.com'
+#  h['To']    #=> 'bob@you.com'
+#  h['X-Mail-SPAM'] = '10000'
+#  h['X-Mail-SPAM'] # => ['15', '20', '10000']
+#  h['X-Mail-SPAM'] = nil
+#  h['X-Mail-SPAM'] # => nil
+"
+Mail::Header,charset=,val,"val => String
+",String,"    def charset=(val)
+      params = self[:content_type].parameters rescue nil
+      if params
+        if val
+          params[:charset] = val
+        else
+          params.delete(:charset)
+        end
+      end
+      @charset = val
+    end
+",""
+Mail::Header,encoded,"","",String,"    def encoded
+      buffer = String.new
+      buffer.force_encoding('us-ascii') if buffer.respond_to?(:force_encoding)
+      fields.each do |field|
+        buffer << field.encoded
+      end
+      buffer
+    end
+",""
+Mail::Header,field_summary,"","",String,"    def field_summary
+      fields.summary
+    end
+",""
+Mail::Header,has_message_id?,"","",(false or true),"    def has_message_id?
+      fields.has_field? 'Message-ID'
+    end
+","# Returns true if the header has a Message-ID defined (empty or not)
+"
+Mail::Header,has_content_id?,"","",(false or true),"    def has_content_id?
+      fields.has_field? 'Content-ID'
+    end
+","# Returns true if the header has a Content-ID defined (empty or not)
+"
+Mail::Header,has_date?,"","",(false or true),"    def has_date?
+      fields.has_field? 'Date'
+    end
+","# Returns true if the header has a Date defined (empty or not)
+"
+Mail::Header,has_mime_version?,"","",(false or true),"    def has_mime_version?
+      fields.has_field? 'Mime-Version'
+    end
+","# Returns true if the header has a MIME version defined (empty or not)
+"
+Mail::Header,split_header,"","",Array<String>,"    def split_header
+      self.fields = @raw_source.split(Constants::HEADER_SPLIT)
+    end
+","# Splits an unfolded and line break cleaned header into individual field
+# strings.
+"
+Mail::Header,each,block,"block => nil
+",Array<Mail::Field>,"    def each(&block)
+      fields.each(&block)
+    end
+","# Enumerable support. Yield each field in order.
+"
+Mail::Field::ParseError,initialize,"element, value, reason","element => Class
+value => String
+reason => String
+",Mail::Field::ParseError,"      def initialize(element, value, reason)
+        @element = element
+        @value = to_utf8(value)
+        @reason = to_utf8(reason)
+        super(""#{@element} can not parse |#{@value}|: #{@reason}"")
+      end
+",""
+Mail::Field::ParseError,to_utf8,text,"text => String
+",String,"        def to_utf8(text)
+          if text.respond_to?(:force_encoding)
+            text.dup.force_encoding(Encoding::UTF_8)
+          else
+            text
+          end
+        end
+",""
+Mail::Field::NilParseError,initialize,element,"element => Class
+",Mail::Field::NilParseError,"      def initialize(element)
+        super element, nil, 'nil is invalid'
+      end
+",""
+Mail::Field::IncompleteParseError,initialize,"element, original_text, unparsed_index","element => Class
+original_text => String
+unparsed_index => Integer
+",Mail::Field::IncompleteParseError,"      def initialize(element, original_text, unparsed_index)
+        parsed_text = to_utf8(original_text[0...unparsed_index])
+        super element, original_text, ""Only able to parse up to #{parsed_text.inspect}""
+      end
+",""
+[s]Mail::Field,parse,"field, charset","field => String
+charset => String
+",Mail::Field,"      def parse(field, charset = 'utf-8')
+        name, value = split(field)
+        if name && value
+          new name, value, charset
+        end
+      end
+","# Parse a field from a raw header line:
+#
+#  Mail::Field.parse(""field-name: field data"")
+#  # => #<Mail::Field …>
+"
+[s]Mail::Field,split,raw_field,"raw_field => String
+",(Array<String> or String),"      def split(raw_field) #:nodoc:
+        if raw_field.index(Constants::COLON)
+          name, value = raw_field.split(Constants::COLON, 2)
+          name.rstrip!
+          if name =~ /\A#{Constants::FIELD_NAME}\z/
+            [ name.rstrip, value.strip ]
+          else
+            Kernel.warn ""WARNING: Ignoring unparsable header #{raw_field.inspect}: invalid header name syntax: #{name.inspect}""
+            nil
+          end
+        else
+          raw_field.strip
+        end
+      rescue => error
+        warn ""WARNING: Ignoring unparsable header #{raw_field.inspect}: #{error.class}: #{error.message}""
+        nil
+      end
+",""
+Mail::Field,initialize,"name, value, charset","name => String
+value => (Array<(Hash<String, String> or String)> or Array<(Hash<Symbol, String> or String)> or Array<String> or Class or Hash<Symbol, String> or Integer or Mail::SubjectField or String or Time)
+charset => String
+",String,"    def initialize(name, value = nil, charset = 'utf-8')
+      case
+      when name.index(Constants::COLON)
+        raise ArgumentError, 'Passing an unparsed header field to Mail::Field.new is not supported in Mail 2.8.0+. Use Mail::Field.parse instead.'
+      when Utilities.blank?(value)
+        @name = name
+        @unparsed_value = nil
+        @charset = charset
+      else
+        @name = name
+        @unparsed_value = value
+        @charset = charset
+      end
+      @name = FIELD_NAME_MAP[@name.to_s.downcase] || @name
+    end
+","# Create a field by name and optional value:
+#
+#  Mail::Field.new(""field-name"", ""value"")
+#  # => #<Mail::Field …>
+#
+# Values that aren't strings or arrays are coerced to Strings with `#to_s`.
+#
+#  Mail::Field.new(""field-name"", 1234)
+#  # => #<Mail::Field …>
+#
+#  Mail::Field.new('content-type', ['text', 'plain', {:charset => 'UTF-8'}])
+#  # => #<Mail::Field …>
+"
+Mail::Field,field=,field,"field => Mail::UnstructuredField
+",Mail::UnstructuredField,"    def field=(field)
+      @field = field
+    end
+",""
+Mail::Field,field,"","",(Mail::BccField or Mail::CcField or Mail::ContentDispositionField or Mail::ContentIdField or Mail::ContentLocationField or Mail::ContentTransferEncodingField or Mail::ContentTypeField or Mail::DateField or Mail::FromField or Mail::InReplyToField or Mail::KeywordsField or Mail::MessageIdField or Mail::MimeVersionField or Mail::ReceivedField or Mail::ReferencesField or Mail::ReplyToField or Mail::ResentBccField or Mail::ResentCcField or Mail::ResentDateField or Mail::ResentFromField or Mail::ResentMessageIdField or Mail::ResentSenderField or Mail::ResentToField or Mail::ReturnPathField or Mail::SenderField or Mail::ToField or Mail::UnstructuredField),"    def field
+      @field ||= create_field(@name, @unparsed_value, @charset)
+    end
+",""
+Mail::Field,name,"","",String,"    def name
+      @name
+    end
+",""
+Mail::Field,value,"","",String,"    def value
+      field.value
+    end
+",""
+Mail::Field,value=,val,"val => String
+",Mail::ToField,"    def value=(val)
+      @field = create_field(name, val, @charset)
+    end
+",""
+Mail::Field,to_s,"","",String,"    def to_s
+      field.to_s
+    end
+",""
+Mail::Field,same,other,"other => Mail::Field
+",(false or true),"    def same(other)
+      other.kind_of?(self.class) && Utilities.match_to_s(other.name, name)
+    end
+",""
+Mail::Field,==,other,"other => Mail::Field
+",(false or true),"    def ==(other)
+      same(other) && Utilities.match_to_s(other.value, value)
+    end
+",""
+Mail::Field,responsible_for?,field_name,"field_name => (String or Symbol)
+",(false or true),"    def responsible_for?(field_name)
+      name.to_s.casecmp(field_name.to_s) == 0
+    end
+",""
+Mail::Field,<=>,other,"other => Mail::Field
+",Integer,"    def <=>(other)
+      field_order_id <=> other.field_order_id
+    end
+",""
+Mail::Field,field_order_id,"","",Integer,"    def field_order_id
+      @field_order_id ||= FIELD_ORDER_LOOKUP.fetch(self.name.to_s.downcase, 100)
+    end
+",""
+Mail::Field,method_missing,"name, args, block","name => Symbol
+args => (Array<%bot> or Array<RDL::Type::NominalType>)
+block => nil
+","(Array<%bot> or Array<Array<(Mail::Field::IncompleteParseError or String)>> or Array<String> or DateTime or Hash<%bot, %bot> or Hash<String, String> or String or false or true)","    def method_missing(name, *args, &block)
+      field.send(name, *args, &block)
+    end
+",""
+Mail::Field,create_field,"name, value, charset","name => String
+value => (Array<(Hash<String, String> or String)> or Array<(Hash<Symbol, String> or String)> or Array<String> or Class or Hash<Symbol, String> or Integer or Mail::SubjectField or String or Time)
+charset => String
+",(Mail::BccField or Mail::CcField or Mail::ContentDispositionField or Mail::ContentIdField or Mail::ContentLocationField or Mail::ContentTransferEncodingField or Mail::ContentTypeField or Mail::DateField or Mail::FromField or Mail::InReplyToField or Mail::KeywordsField or Mail::MessageIdField or Mail::MimeVersionField or Mail::ReceivedField or Mail::ReferencesField or Mail::ReplyToField or Mail::ResentBccField or Mail::ResentCcField or Mail::ResentDateField or Mail::ResentFromField or Mail::ResentMessageIdField or Mail::ResentSenderField or Mail::ResentToField or Mail::ReturnPathField or Mail::SenderField or Mail::ToField or Mail::UnstructuredField),"    def create_field(name, value, charset)
+      parse_field(name, value, charset)
+    rescue Mail::Field::ParseError => e
+      field = Mail::UnstructuredField.new(name, value)
+      field.errors << [name, value, e]
+      field
+    end
+",""
+Mail::Field,parse_field,"name, value, charset","name => String
+value => (Array<(Hash<String, String> or String)> or Array<(Hash<Symbol, String> or String)> or Array<String> or Class or Hash<Symbol, String> or Integer or Mail::SubjectField or String or Time)
+charset => String
+",(Mail::BccField or Mail::CcField or Mail::CommentsField or Mail::ContentDescriptionField or Mail::ContentDispositionField or Mail::ContentIdField or Mail::ContentLocationField or Mail::ContentTransferEncodingField or Mail::ContentTypeField or Mail::DateField or Mail::FromField or Mail::InReplyToField or Mail::KeywordsField or Mail::MessageIdField or Mail::MimeVersionField or Mail::OptionalField or Mail::ReceivedField or Mail::ReferencesField or Mail::ReplyToField or Mail::ResentBccField or Mail::ResentCcField or Mail::ResentDateField or Mail::ResentFromField or Mail::ResentMessageIdField or Mail::ResentSenderField or Mail::ResentToField or Mail::ReturnPathField or Mail::SenderField or Mail::SubjectField or Mail::ToField),"    def parse_field(name, value, charset)
+      value = unfold(value) if value.is_a?(String)
+
+      if klass = field_class_for(name)
+        klass.parse(value, charset)
+      else
+        OptionalField.parse(name, value, charset)
+      end
+    end
+",""
+Mail::Field,field_class_for,name,"name => String
+",Class,"    def field_class_for(name)
+      FIELDS_MAP[name.to_s.downcase]
+    end
+",""
+Mail::Field,unfold,string,"string => String
+",String,"    def unfold(string)
+      string.gsub(Constants::UNFOLD_WS, '\1')
+    end
+","# 2.2.3. Long Header Fields
+#
+#  The process of moving from this folded multiple-line representation
+#  of a header field to its single line representation is called
+#  ""unfolding"". Unfolding is accomplished by simply removing any CRLF
+#  that is immediately followed by WSP.  Each header field should be
+#  treated in its unfolded form for further syntactic and semantic
+#  evaluation.
+"
+Mail::Configuration,initialize,"","",nil,"    def initialize
+      @delivery_method  = nil
+      @retriever_method = nil
+      super
+    end
+",""
+Mail::Configuration,delivery_method,"method, settings","method => (Class or String or Symbol)
+settings => (Hash<%bot, %bot> or Hash<Symbol, (Integer or MockSMTP or true)> or Hash<Symbol, (Integer or String or true)> or Hash<Symbol, (Integer or String)> or Hash<Symbol, (RSpec::Mocks::Double or Symbol)> or Hash<Symbol, Integer> or Hash<Symbol, Logger> or Hash<Symbol, MockSMTP> or Hash<Symbol, String>)
+",(Mail::FileDelivery or Mail::LoggerDelivery or Mail::SMTP or Mail::SMTPConnection or Mail::Sendmail or Mail::TestMailer or MyDelivery or MyTestDeliveryMethod or RSpec::Mocks::Double),"    def delivery_method(method = nil, settings = {})
+      return @delivery_method if @delivery_method && method.nil?
+      @delivery_method = lookup_delivery_method(method).new(settings)
+    end
+",""
+Mail::Configuration,lookup_delivery_method,method,"method => (Class or String or Symbol)
+",Class,"    def lookup_delivery_method(method)
+      case method.is_a?(String) ? method.to_sym : method
+      when nil
+        Mail::SMTP
+      when :smtp
+        Mail::SMTP
+      when :sendmail
+        Mail::Sendmail
+      when :exim
+        Mail::Exim
+      when :file
+        Mail::FileDelivery
+      when :smtp_connection
+        Mail::SMTPConnection
+      when :test
+        Mail::TestMailer
+      when :logger
+        Mail::LoggerDelivery
+      else
+        method
+      end
+    end
+",""
+Mail::Configuration,retriever_method,"method, settings","method => (Class or Symbol)
+settings => (Hash<%bot, %bot> or Hash<Symbol, (Integer or String or false or true)> or Hash<Symbol, (Integer or String or true)> or Hash<Symbol, String> or Hash<Symbol, true>)
+",(Mail::IMAP or Mail::POP3 or Mail::TestRetriever or MyRetriever or RSpec::Mocks::Double),"    def retriever_method(method = nil, settings = {})
+      return @retriever_method if @retriever_method && method.nil?
+      @retriever_method = lookup_retriever_method(method).new(settings)
+    end
+",""
+Mail::Configuration,lookup_retriever_method,method,"method => (Class or Symbol)
+",Class,"    def lookup_retriever_method(method)
+      case method
+      when nil
+        Mail::POP3
+      when :pop3
+        Mail::POP3
+      when :imap
+        Mail::IMAP
+      when :test
+        Mail::TestRetriever
+      else
+        method
+      end
+    end
+",""
+Mail::Configuration,param_encode_language,value,"value => String
+",String,"    def param_encode_language(value = nil)
+      value ? @encode_language = value : @encode_language ||= 'en'
+    end
+",""
+Mail::PartsList,initialize,args,"args => (Array<%bot> or Array<RDL::Type::GenericType>)
+",(Array<%bot> or Array<Integer>),"    def initialize(*args)
+      @parts = Array.new(*args)
+      super @parts
+    end
+",""
+Mail::PartsList,encode_with,coder,"coder => Psych::Coder
+",(Array<%bot> or Array<Integer>),"    def encode_with(coder) # :nodoc:
+      coder.represent_object(nil, @parts)
+    end
+","# The #encode_with and #to_yaml methods are just implemented
+# for the sake of backward compatibility ; the delegator does
+# not correctly delegate these calls to the delegated object
+"
+Mail::PartsList,attachments,"","",(Array<%bot> or Array<Mail::Part>),"    def attachments
+      Mail::AttachmentsList.new(@parts)
+    end
+",""
+Mail::PartsList,inspect_structure,parent_id,"parent_id => String
+",String,"    def inspect_structure(parent_id = '')
+      enum_for(:map).with_index { |part, i|
+        i = i + 1 # Use 1-based indexes since this is for humans to read
+        id = parent_id.empty? ? ""#{i}"" : ""#{parent_id}.#{i}""
+        if part.content_type == ""message/rfc822""
+          sub_list = Mail.new(part.body).parts
+        else
+          sub_list = part.parts
+        end
+        id + '. ' + part.inspect +
+          if sub_list.any?
+            ""\n"" + sub_list.inspect_structure(id)
+          end.to_s
+      }.join(""\n"")
+    end
+",""
+Mail::PartsList,recursive_delete_if,"","",(Array<%bot> or Array<Mail::Part>),"    def recursive_delete_if
+      delete_if { |part|
+        if part.content_type == ""message/rfc822""
+          sub_list = Mail.new(part.body).parts
+        else
+          sub_list = part.parts
+        end
+        (yield part).tap {
+          if sub_list.any?
+            sub_list.recursive_delete_if {|part| yield part }
+          end
+        }
+      }
+    end
+",""
+Mail::PartsList,delete_attachments,"","",(Array<%bot> or Array<Mail::Part>),"    def delete_attachments
+      recursive_delete_if { |part|
+        part.attachment?
+      }
+    end
+",""
+Mail::PartsList,sort,"","",Mail::PartsList,"    def sort
+      self.class.new(@parts.sort)
+    end
+",""
+Mail::PartsList,sort!,order,"order => (Array<%bot> or Array<String>)
+",(Array<%bot> or Array<Mail::Part> or Array<String>),"    def sort!(order)
+      # stable sort should be used to maintain the relative order as the parts are added
+      i = 0;
+      sorted = @parts.sort_by do |a|
+        # OK, 10000 is arbitrary... if anyone actually wants to explicitly sort 10000 parts of a
+        # single email message... please show me a use case and I'll put more work into this method,
+        # in the meantime, it works :)
+        get_order_value(a, order) << (i += 1)
+      end
+      @parts.clear
+      sorted.each { |p| @parts << p }
+    end
+",""
+Mail::PartsList,get_order_value,"part, order","part => (Mail::Part or String)
+order => (Array<%bot> or Array<String>)
+",Array<Integer>,"    def get_order_value(part, order)
+      is_attachment = part.respond_to?(:attachment?) && part.attachment?
+      has_content_type = part.respond_to?(:content_type) && !part[:content_type].nil?
+
+      [is_attachment ? 1 : 0, (has_content_type ? order.index(part[:content_type].string.downcase) : nil) || 10000]
+    end
+",""
+Mail::EnvelopeFromElement,initialize,string,"string => String
+",DateTime,"    def initialize(string)
+      envelope_from = Mail::Parsers::EnvelopeFromParser.parse(string)
+      @address = envelope_from.address
+      @date_time = ::DateTime.parse(envelope_from.ctime_date) if envelope_from.ctime_date
+    end
+",""
+Mail::EnvelopeFromElement,formatted_date_time,"","",String,"    def formatted_date_time
+      if date_time
+        if date_time.respond_to?(:ctime)
+          date_time.ctime
+        else
+          date_time.strftime '%a %b %e %T %Y'
+        end
+      end
+    end
+","# RFC 4155:
+#   a timestamp indicating the UTC date and time when the message
+#   was originally received, conformant with the syntax of the
+#   traditional UNIX 'ctime' output sans timezone (note that the
+#   use of UTC precludes the need for a timezone indicator);
+"
+Mail::EnvelopeFromElement,to_s,"","",String,"    def to_s
+      if date_time
+        ""#{address} #{formatted_date_time}""
+      else
+        address
+      end
+    end
+",""
+Mail::ContentLocationElement,initialize,string,"string => String
+",String,"    def initialize(string)
+      @location = Mail::Parsers::ContentLocationParser.parse(string).location
+    end
+",""
+Mail::DateTimeElement,initialize,string,"string => String
+",String,"    def initialize(string)
+      date_time = Mail::Parsers::DateTimeParser.parse(string)
+      @date_string = date_time.date_string
+      @time_string = date_time.time_string
+    end
+",""
+Mail::ContentTypeElement,initialize,string,"string => String
+","(Array<%bot> or Array<Hash<String, String>>)","    def initialize(string)
+      content_type = Mail::Parsers::ContentTypeParser.parse(cleaned(string))
+      @main_type = content_type.main_type
+      @sub_type = content_type.sub_type
+      @parameters = content_type.parameters
+    end
+",""
+Mail::ContentTypeElement,cleaned,string,"string => String
+",String,"      def cleaned(string)
+        if string =~ /;\s*$/
+          $`
+        else
+          string
+        end
+      end
+",""
+Mail::MimeVersionElement,initialize,string,"string => String
+",String,"    def initialize(string)
+      mime_version = Mail::Parsers::MimeVersionParser.parse(string)
+      @major = mime_version.major
+      @minor = mime_version.minor
+    end
+",""
+Mail::ContentDispositionElement,initialize,string,"string => String
+","(Array<%bot> or Array<Hash<String, String>>)","    def initialize(string)
+      content_disposition = Mail::Parsers::ContentDispositionParser.parse(cleaned(string))
+      @disposition_type = content_disposition.disposition_type
+      @parameters = content_disposition.parameters
+    end
+",""
+Mail::ContentDispositionElement,cleaned,string,"string => String
+",String,"    def cleaned(string)
+      string =~ /(.+);\s*$/ ? $1 : string
+    end
+",""
+Mail::PhraseList,initialize,string,"string => String
+",(Array<%bot> or Array<String>),"    def initialize(string)
+      @phrases =
+        if Utilities.blank? string
+          []
+        else
+          Mail::Parsers::PhraseListsParser.parse(string).phrases.map { |p| Mail::Utilities.unquote(p) }
+        end
+    end
+",""
+Mail::AddressList,initialize,string,"string => String
+",(Array<%bot> or Array<String>),"    def initialize(string)
+      address_list = Parsers::AddressListsParser.parse(string)
+      @addresses = address_list.addresses.map { |a| Address.new(a) }
+      @group_names = address_list.group_names
+    end
+","# Mail::AddressList is the class that parses To, From and other address fields from
+# emails passed into Mail.
+#
+# AddressList provides a way to query the groups and mailbox lists of the passed in
+# string.
+#
+# It can supply all addresses in an array, or return each address as an address object.
+#
+# Mail::AddressList requires a correctly formatted group or mailbox list per RFC2822 or
+# RFC822.  It also handles all obsolete versions in those RFCs.
+#
+#  list = 'ada@test.lindsaar.net, My Group: mikel@test.lindsaar.net, Bob <bob@test.lindsaar.net>;'
+#  a = AddressList.new(list)
+#  a.addresses    #=> [#<Mail::Address:14943130 Address: |ada@test.lindsaar.net...
+#  a.group_names  #=> [""My Group""]
+"
+Mail::AddressList,addresses_grouped_by_group,"","","(Hash<%bot, %bot> or Hash<String, Array<Mail::Address>>)","    def addresses_grouped_by_group
+      addresses.select(&:group).group_by(&:group)
+    end
+",""
+Mail::MessageIdsElement,initialize,string,"string => String
+",(Array<%bot> or Array<String>),"    def initialize(string)
+      @message_ids = parse(string)
+    end
+",""
+Mail::MessageIdsElement,message_id,"","",String,"    def message_id
+      message_ids.first
+    end
+",""
+Mail::MessageIdsElement,parse,string,"string => String
+",(Array<%bot> or Array<String>),"      def parse(string)
+        if Utilities.blank? string
+          []
+        else
+          Mail::Parsers::MessageIdsParser.parse(string).message_ids
+        end
+      end
+",""
+Mail::ContentTransferEncodingElement,initialize,string,"string => String
+",String,"    def initialize(string)
+      @encoding = Mail::Parsers::ContentTransferEncodingParser.parse(string).encoding
+    end
+",""
+Mail::Address,initialize,value,"value => (Mail::Parsers::AddressListsParser::AddressStruct or String)
+",Mail::Parsers::AddressListsParser::AddressStruct,"    def initialize(value = nil)
+      if value.nil?
+        @parsed = false
+        @data = nil
+      else
+        parse(value)
+      end
+    end
+",""
+Mail::Address,raw,"","",String,"    def raw
+      @data.raw
+    end
+","# Returns the raw input of the passed in string, this is before it is passed
+# by the parser.
+"
+Mail::Address,format,output_type,"output_type => Symbol
+",String,"    def format(output_type = :decode)
+      parse unless @parsed
+      if @data.nil?
+        Constants::EMPTY
+      elsif name = display_name(output_type)
+        [Utilities.quote_phrase(name), ""<#{address(output_type)}>"", format_comments].compact.join(Constants::SPACE)
+      elsif a = address(output_type)
+        [a, format_comments].compact.join(Constants::SPACE)
+      else
+        raw
+      end
+    end
+","# Returns a correctly formatted address for the email going out.  If given
+# an incorrectly formatted address as input, Mail::Address will do its best
+# to format it correctly.  This includes quoting display names as needed and
+# putting the address in angle brackets etc.
+#
+#  a = Address.new('Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>')
+#  a.format #=> 'Mikel Lindsaar <mikel@test.lindsaar.net> (My email address)'
+"
+Mail::Address,address,output_type,"output_type => Symbol
+",String,"    def address(output_type = :decode)
+      parse unless @parsed
+      if d = domain(output_type)
+        ""#{local(output_type)}@#{d}""
+      else
+        local(output_type)
+      end
+    end
+","# Returns the address that is in the address itself.  That is, the
+# local@domain string, without any angle brackets or the like.
+#
+#  a = Address.new('Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>')
+#  a.address #=> 'mikel@test.lindsaar.net'
+"
+Mail::Address,address=,value,"value => String
+",Mail::Parsers::AddressListsParser::AddressStruct,"    def address=(value)
+      parse(value)
+    end
+","# Provides a way to assign an address to an already made Mail::Address object.
+#
+#  a = Address.new
+#  a.address = 'Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>'
+#  a.address #=> 'mikel@test.lindsaar.net'
+"
+Mail::Address,display_name,output_type,"output_type => Symbol
+",String,"    def display_name(output_type = :decode)
+      parse unless @parsed
+      @display_name ||= get_display_name
+      Encodings.decode_encode(@display_name.to_s, output_type) if @display_name
+    end
+","# Returns the display name of the email address passed in.
+#
+#  a = Address.new('Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>')
+#  a.display_name #=> 'Mikel Lindsaar'
+"
+Mail::Address,display_name=,str,"str => String
+",String,"    def display_name=( str )
+      @display_name = str.nil? ? nil : str.dup # in case frozen
+    end
+","# Provides a way to assign a display name to an already made Mail::Address object.
+#
+#  a = Address.new
+#  a.address = 'mikel@test.lindsaar.net'
+#  a.display_name = 'Mikel Lindsaar'
+#  a.format #=> 'Mikel Lindsaar <mikel@test.lindsaar.net>'
+"
+Mail::Address,local,output_type,"output_type => Symbol
+",String,"    def local(output_type = :decode)
+      parse unless @parsed
+      Encodings.decode_encode(""#{@data.obs_domain_list}#{get_local.strip}"", output_type) if get_local
+    end
+","# Returns the local part (the left hand side of the @ sign in the email address) of
+# the address
+#
+#  a = Address.new('Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>')
+#  a.local #=> 'mikel'
+"
+Mail::Address,domain,output_type,"output_type => Symbol
+",String,"    def domain(output_type = :decode)
+      parse unless @parsed
+      Encodings.decode_encode(strip_all_comments(get_domain), output_type) if get_domain
+    end
+","# Returns the domain part (the right hand side of the @ sign in the email address) of
+# the address
+#
+#  a = Address.new('Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>')
+#  a.domain #=> 'test.lindsaar.net'
+"
+Mail::Address,comments,"","",Array<String>,"    def comments
+      parse unless @parsed
+      comments = get_comments
+      if comments.nil? || comments.none?
+        nil
+      else
+        comments.map { |c| c.squeeze(Constants::SPACE) }
+      end
+    end
+","# Returns an array of comments that are in the email, or nil if there
+# are no comments
+#
+#  a = Address.new('Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>')
+#  a.comments #=> ['My email address']
+#
+#  b = Address.new('Mikel Lindsaar <mikel@test.lindsaar.net>')
+#  b.comments #=> nil
+"
+Mail::Address,name,"","",String,"    def name
+      parse unless @parsed
+      get_name
+    end
+","# Sometimes an address will not have a display name, but might have the name
+# as a comment field after the address.  This returns that name if it exists.
+#
+#  a = Address.new('mikel@test.lindsaar.net (Mikel Lindsaar)')
+#  a.name #=> 'Mikel Lindsaar'
+"
+Mail::Address,to_s,"","",String,"    def to_s
+      parse unless @parsed
+      format
+    end
+","# Returns the format of the address, or returns nothing
+#
+#  a = Address.new('Mikel Lindsaar (My email address) <mikel@test.lindsaar.net>')
+#  a.format #=> 'Mikel Lindsaar <mikel@test.lindsaar.net> (My email address)'
+"
+Mail::Address,inspect,"","",String,"    def inspect
+      parse unless @parsed
+      ""#<#{self.class}:#{self.object_id} Address: |#{to_s}| >""
+    end
+","# Shows the Address object basic details, including the Address
+#  a = Address.new('Mikel (My email) <mikel@test.lindsaar.net>')
+#  a.inspect #=> ""#<Mail::Address:14184910 Address: |Mikel <mikel@test.lindsaar.net> (My email)| >""
+"
+Mail::Address,encoded,"","",String,"    def encoded
+      format :encode
+    end
+",""
+Mail::Address,decoded,"","",String,"    def decoded
+      format :decode
+    end
+",""
+Mail::Address,group,"","",String,"    def group
+      @data && @data.group
+    end
+",""
+Mail::Address,parse,value,"value => (Mail::Parsers::AddressListsParser::AddressStruct or String)
+",Mail::Parsers::AddressListsParser::AddressStruct,"    def parse(value = nil)
+      @parsed = true
+      @data = nil
+
+      case value
+      when Mail::Parsers::AddressListsParser::AddressStruct
+        @data = value
+      when String
+        unless Utilities.blank?(value)
+          address_list = Mail::Parsers::AddressListsParser.parse(value)
+          @data = address_list.addresses.first
+        end
+      end
+    end
+",""
+Mail::Address,strip_all_comments,string,"string => String
+",String,"    def strip_all_comments(string)
+      unless Utilities.blank?(comments)
+        comments.each do |comment|
+          string = string.gsub(""(#{comment})"", Constants::EMPTY)
+        end
+      end
+      string.strip
+    end
+",""
+Mail::Address,strip_domain_comments,value,"value => String
+",String,"    def strip_domain_comments(value)
+      unless Utilities.blank?(comments)
+        comments.each do |comment|
+          if @data.domain && @data.domain.include?(""(#{comment})"")
+            value = value.gsub(""(#{comment})"", Constants::EMPTY)
+          end
+        end
+      end
+      value.to_s.strip
+    end
+",""
+Mail::Address,get_display_name,"","",String,"    def get_display_name
+      if @data && @data.display_name
+        str = strip_all_comments(@data.display_name.to_s)
+      elsif @data && @data.comments && @data.domain
+        str = strip_domain_comments(format_comments)
+      end
+      str unless Utilities.blank?(str)
+    end
+",""
+Mail::Address,get_name,"","",String,"    def get_name
+      if display_name
+        str = display_name
+      elsif comments
+        str = ""(#{comments.join(Constants::SPACE).squeeze(Constants::SPACE)})""
+      end
+
+      Utilities.unparen(str) unless Utilities.blank?(str)
+    end
+",""
+Mail::Address,format_comments,"","",String,"    def format_comments
+      if comments
+        comment_text = comments.map {|c| Utilities.escape_paren(c) }.join(Constants::SPACE).squeeze(Constants::SPACE)
+        @format_comments ||= ""(#{comment_text})""
+      else
+        nil
+      end
+    end
+",""
+Mail::Address,get_local,"","",String,"    def get_local
+      @data && @data.local
+    end
+",""
+Mail::Address,get_domain,"","",String,"    def get_domain
+      @data && @data.domain
+    end
+",""
+Mail::Address,get_comments,"","",(Array<%bot> or Array<String>),"    def get_comments
+      @data && @data.comments
+    end
+",""
+Mail::ReceivedElement,initialize,string,"string => String
+",String,"    def initialize(string)
+      if Utilities.blank? string
+        @date_time = nil
+        @info = nil
+      else
+        received = Mail::Parsers::ReceivedParser.parse(string)
+        @date_time = datetime_for(received)
+        @info = received.info
+      end
+    end
+",""
+Mail::ReceivedElement,datetime_for,received,"received => Mail::Parsers::ReceivedParser::ReceivedStruct
+",DateTime,"      def datetime_for(received)
+        ::DateTime.parse(""#{received.date} #{received.time}"")
+      rescue ArgumentError => e
+        raise e unless e.message == 'invalid date'
+        warn ""WARNING: Invalid date field for received element (#{received.date} #{received.time}): #{e.class}: #{e.message}""
+        nil
+      end
+",""
+Mail::UnstructuredField,initialize,"name, value, charset","name => String
+value => (Array<String> or Hash<Symbol, String> or Integer or Mail::SubjectField or String)
+charset => String
+",(Encoding or String),"    def initialize(name, value, charset = nil)
+      if value.is_a?(Array)
+        # Probably has arrived here from a failed parse of an AddressList Field
+        value = value.join(', ')
+
+      # Mark UTF-8 strings parsed from ASCII-8BIT
+      elsif value.respond_to?(:force_encoding) && value.encoding == Encoding::ASCII_8BIT
+        utf8 = value.dup.force_encoding(Encoding::UTF_8)
+        value = utf8 if utf8.valid_encoding?
+      end
+
+      charset ||=
+        if value.respond_to?(:encoding)
+          value.encoding
+        elsif RUBY_VERSION < '1.9'
+          $KCODE
+        end
+
+      super name, value.to_s, charset
+    end
+",""
+Mail::UnstructuredField,parse,"","",Mail::UnstructuredField,"    def parse
+      self
+    end
+","# An unstructured field does not parse
+"
+Mail::UnstructuredField,do_encode,"","",String,"    def do_encode
+      if value && !value.empty?
+        ""#{wrapped_value}\r\n""
+      else
+        ''
+      end
+    end
+",""
+Mail::UnstructuredField,do_decode,"","",String,"    def do_decode
+      Utilities.blank?(value) ? nil : Encodings.decode_encode(value, :decode)
+    end
+",""
+Mail::UnstructuredField,wrapped_value,"","",String,"    def wrapped_value # :nodoc:
+      wrap_lines(name, fold(""#{name}: "".length))
+    end
+","# 2.2.3. Long Header Fields
+#
+#  Each header field is logically a single line of characters comprising
+#  the field name, the colon, and the field body.  For convenience
+#  however, and to deal with the 998/78 character limitations per line,
+#  the field body portion of a header field can be split into a multiple
+#  line representation; this is called ""folding"".  The general rule is
+#  that wherever this standard allows for folding white space (not
+#  simply WSP characters), a CRLF may be inserted before any WSP.  For
+#  example, the header field:
+#
+#          Subject: This is a test
+#
+#  can be represented as:
+#
+#          Subject: This
+#           is a test
+#
+#  Note: Though structured field bodies are defined in such a way that
+#  folding can take place between many of the lexical tokens (and even
+#  within some of the lexical tokens), folding SHOULD be limited to
+#  placing the CRLF at higher-level syntactic breaks.  For instance, if
+#  a field body is defined as comma-separated values, it is recommended
+#  that folding occur after the comma separating the structured items in
+#  preference to other places where the field could be folded, even if
+#  it is allowed elsewhere.
+"
+Mail::UnstructuredField,wrap_lines,"name, folded_lines","name => String
+folded_lines => (Array<%bot> or Array<String>)
+",String,"    def wrap_lines(name, folded_lines)
+      result = [""#{name}: #{folded_lines.shift}""]
+      result.concat(folded_lines)
+      result.join(""\r\n\s"")
+    end
+","# 6.2. Display of 'encoded-word's
+#
+#  When displaying a particular header field that contains multiple
+#  'encoded-word's, any 'linear-white-space' that separates a pair of
+#  adjacent 'encoded-word's is ignored.  (This is to allow the use of
+#  multiple 'encoded-word's to represent long strings of unencoded text,
+#  without having to separate 'encoded-word's where spaces occur in the
+#  unencoded text.)
+"
+Mail::UnstructuredField,fold,prepend,"prepend => Integer
+",(Array<%bot> or Array<String>),"    def fold(prepend = 0) # :nodoc:
+      encoding       = normalized_encoding
+      decoded_string = decoded.to_s
+      should_encode  = !decoded_string.ascii_only?
+      if should_encode
+        first = true
+        words = decoded_string.split(/[ \t]/).map do |word|
+          if first
+            first = !first
+          else
+            word = "" #{word}""
+          end
+          if !word.ascii_only?
+            word
+          else
+            word.scan(/.{7}|.+$/)
+          end
+        end.flatten
+      else
+        words = decoded_string.split(/[ \t]/)
+      end
+
+      folded_lines   = []
+      while !words.empty?
+        limit = 78 - prepend
+        limit = limit - 7 - encoding.length if should_encode
+        line = String.new
+        first_word = true
+        while !words.empty?
+          break unless word = words.first.dup
+
+          # Convert on 1.9+ only since we aren't sure of the current
+          # charset encoding on 1.8. We'd need to track internal/external
+          # charset on each field.
+          if charset && word.respond_to?(:encoding)
+            word = Encodings.transcode_charset(word, word.encoding, charset)
+          end
+
+          word = encode(word) if should_encode
+          word = encode_crlf(word)
+          # Skip to next line if we're going to go past the limit
+          # Unless this is the first word, in which case we're going to add it anyway
+          # Note: This means that a word that's longer than 998 characters is going to break the spec. Please fix if this is a problem for you.
+          # (The fix, it seems, would be to use encoded-word encoding on it, because that way you can break it across multiple lines and
+          # the linebreak will be ignored)
+          break if !line.empty? && (line.length + word.length + 1 > limit)
+          # Remove the word from the queue ...
+          words.shift
+          # Add word separator
+          if first_word
+            first_word = false
+          else
+            line << "" "" if !should_encode
+          end
+
+          # ... add it in encoded form to the current line
+          line << word
+        end
+        # Encode the line if necessary
+        line = ""=?#{encoding}?Q?#{line}?="" if should_encode
+        # Add the line to the output and reset the prepend
+        folded_lines << line
+        prepend = 0
+      end
+      folded_lines
+    end
+",""
+Mail::UnstructuredField,encode,value,"value => String
+",String,"    def encode(value)
+      value = [value].pack(Constants::CAPITAL_M).gsub(Constants::EQUAL_LF, Constants::EMPTY)
+      value.gsub!(/""/,  '=22')
+      value.gsub!(/\(/, '=28')
+      value.gsub!(/\)/, '=29')
+      value.gsub!(/\?/, '=3F')
+      value.gsub!(/_/,  '=5F')
+      value.gsub!(/ /,  '_')
+      value
+    end
+",""
+Mail::UnstructuredField,encode_crlf,value,"value => String
+",String,"    def encode_crlf(value)
+      value.gsub!(Constants::CR, Constants::CR_ENCODED)
+      value.gsub!(Constants::LF, Constants::LF_ENCODED)
+      value
+    end
+",""
+Mail::UnstructuredField,normalized_encoding,"","",String,"    def normalized_encoding
+      encoding = charset.to_s.upcase.gsub('_', '-')
+      encoding = 'UTF-8' if encoding == 'UTF8' # Ruby 1.8.x and $KCODE == 'u'
+      encoding
+    end
+",""
+Mail::ReferencesField,initialize,"value, charset","value => (Array<String> or String)
+charset => String
+",String,"    def initialize(value = nil, charset = nil)
+      value = value.join(""\r\n\s"") if value.is_a?(Array)
+      super value, charset
+    end
+",""
+Mail::ContentIdField,initialize,"value, charset","value => String
+charset => String
+",String,"    def initialize(value = nil, charset = nil)
+      value = Mail::Utilities.generate_message_id if Utilities.blank?(value)
+      super value, charset
+    end
+",""
+Mail::ContentIdField,element,"","",Mail::MessageIdsElement,"    def element
+      @element ||= Mail::MessageIdsElement.new(value)
+    end
+",""
+Mail::ContentIdField,content_id,"","",String,"    def content_id
+      element.message_id
+    end
+",""
+Mail::ContentIdField,do_decode,"","",String,"      def do_decode
+        ""<#{content_id}>""
+      end
+",""
+Mail::ContentIdField,do_encode,"","",String,"      def do_encode
+        ""#{name}: #{do_decode}\r\n""
+      end
+",""
+Mail::ReturnPathField,initialize,"value, charset","value => String
+charset => String
+",String,"    def initialize(value = nil, charset = nil)
+      if value == '<>'
+        super nil, charset
+      else
+        super
+      end
+    end
+",""
+Mail::ReturnPathField,default,"","",String,"    def default
+      address
+    end
+",""
+Mail::ReturnPathField,do_encode,"","",String,"      def do_encode
+        ""#{name}: <#{address}>\r\n""
+      end
+",""
+Mail::AddressContainer,initialize,"field, list","field => (Mail::BccField or Mail::CcField or Mail::FromField or Mail::ReplyToField or Mail::ResentBccField or Mail::ResentCcField or Mail::ResentFromField or Mail::ResentSenderField or Mail::ResentToField or Mail::ReturnPathField or Mail::SenderField or Mail::ToField)
+list => (Array<%bot> or Array<Mail::Address> or Array<String>)
+",(Array<%bot> or Array<Mail::Address> or Array<String>),"    def initialize(field, list = nil)
+      @field = field
+      super list if list
+    end
+",""
+Mail::AddressContainer,<<,address,"address => String
+",String,"    def <<(address)
+      @field << address
+    end
+",""
+Mail::CommonAddressField,initialize,"value, charset","value => (Array<String> or String)
+charset => String
+",String,"    def initialize(value = nil, charset = nil)
+      super encode_if_needed(value, charset), charset
+    end
+",""
+Mail::CommonAddressField,element,"","",Mail::AddressList,"    def element # :nodoc:
+      @element ||= AddressList.new(value)
+    end
+",""
+Mail::CommonAddressField,each,"","",Array<Mail::Address>,"    def each
+      element.addresses.each do |address|
+        yield(address)
+      end
+    end
+","# Allows you to iterate through each address object in the address_list
+"
+Mail::CommonAddressField,default,"","",Array<String>,"    def default
+      addresses
+    end
+",""
+Mail::CommonAddressField,address,"","",String,"    def address
+      addresses.first
+    end
+",""
+Mail::CommonAddressField,addresses,"","",(Array<%bot> or Array<String>),"    def addresses
+      list = element.addresses.map { |a| a.address }
+      Mail::AddressContainer.new(self, list)
+    end
+","# Returns the address string of all the addresses in the address list
+"
+Mail::CommonAddressField,formatted,"","",Array<String>,"    def formatted
+      list = element.addresses.map { |a| a.format }
+      Mail::AddressContainer.new(self, list)
+    end
+","# Returns the formatted string of all the addresses in the address list
+"
+Mail::CommonAddressField,display_names,"","",Array<String>,"    def display_names
+      list = element.addresses.map { |a| a.display_name }
+      Mail::AddressContainer.new(self, list)
+    end
+","# Returns the display name of all the addresses in the address list
+"
+Mail::CommonAddressField,addrs,"","",Array<Mail::Address>,"    def addrs
+      list = element.addresses
+      Mail::AddressContainer.new(self, list)
+    end
+","# Returns the actual address objects in the address list
+"
+Mail::CommonAddressField,groups,"","","(Hash<%bot, %bot> or Hash<String, Array<Mail::Address>>)","    def groups
+      element.addresses_grouped_by_group
+    end
+","# Returns a hash of group name => address strings for the address list
+"
+Mail::CommonAddressField,group_addresses,"","",(Array<%bot> or Array<String>),"    def group_addresses
+      decoded_group_addresses
+    end
+","# Returns the addresses that are part of groups
+"
+Mail::CommonAddressField,decoded_group_addresses,"","",(Array<%bot> or Array<String>),"    def decoded_group_addresses
+      groups.map { |k,v| v.map { |a| a.decoded } }.flatten
+    end
+","# Returns a list of decoded group addresses
+"
+Mail::CommonAddressField,encoded_group_addresses,"","",(Array<%bot> or Array<String>),"    def encoded_group_addresses
+      groups.map { |k,v| v.map { |a| a.encoded } }.flatten
+    end
+","# Returns a list of encoded group addresses
+"
+Mail::CommonAddressField,group_names,"","",Array<String>,"    def group_names # :nodoc:
+      element.group_names
+    end
+","# Returns the name of all the groups in a string
+"
+Mail::CommonAddressField,<<,val,"val => String
+",String,"    def <<(val)
+      case
+      when val.nil?
+        raise ArgumentError, ""Need to pass an address to <<""
+      when Utilities.blank?(val)
+        self
+      else
+        self.value = [self.value, encode_if_needed(val)].reject { |a| Utilities.blank?(a) }.join("", "")
+      end
+    end
+",""
+Mail::CommonAddressField,do_encode,"","",String,"      def do_encode
+        return '' if Utilities.blank?(value)
+        address_array = element.addresses.reject { |a| encoded_group_addresses.include?(a.encoded) }.compact.map { |a| a.encoded }
+        address_text  = address_array.join("", \r\n\s"")
+        group_array = groups.map { |k,v| ""#{k}: #{v.map { |a| a.encoded }.join("", \r\n\s"")};"" }
+        group_text  = group_array.join("" \r\n\s"")
+        return_array = [address_text, group_text].reject { |a| Utilities.blank?(a) }
+        ""#{name}: #{return_array.join("", \r\n\s"")}\r\n""
+      end
+",""
+Mail::CommonAddressField,do_decode,"","",String,"      def do_decode
+        return nil if Utilities.blank?(value)
+        address_array = element.addresses.reject { |a| decoded_group_addresses.include?(a.decoded) }.map { |a| a.decoded }
+        address_text  = address_array.join("", "")
+        group_array = groups.map { |k,v| ""#{k}: #{v.map { |a| a.decoded }.join("", "")};"" }
+        group_text  = group_array.join("" "")
+        return_array = [address_text, group_text].reject { |a| Utilities.blank?(a) }
+        return_array.join("", "")
+      end
+",""
+Mail::SenderField,default,"","",String,"    def default
+      address
+    end
+",""
+Mail::SenderField,addresses,"","",Array<String>,"    def addresses
+      Array(super.first)
+    end
+",""
+Mail::ContentDispositionField,initialize,"value, charset","value => String
+charset => String
+",String,"    def initialize(value = nil, charset = nil)
+      super ensure_filename_quoted(value), charset
+    end
+",""
+Mail::ContentDispositionField,element,"","",Mail::ContentDispositionElement,"    def element
+      @element ||= Mail::ContentDispositionElement.new(value)
+    end
+",""
+Mail::ContentDispositionField,disposition_type,"","",String,"    def disposition_type
+      element.disposition_type
+    end
+",""
+Mail::ContentDispositionField,parameters,"","","(Hash<%bot, %bot> or Hash<String, String>)","    def parameters
+      @parameters = ParameterHash.new
+      element.parameters.each { |p| @parameters.merge!(p) } unless element.parameters.nil?
+      @parameters
+    end
+",""
+Mail::ContentDispositionField,filename,"","",String,"    def filename
+      @filename ||= parameters['filename'] || parameters['name']
+    end
+",""
+Mail::ContentDispositionField,encoded,"","",String,"    def encoded
+      p = "";\r\n\s#{parameters.encoded}"" if parameters.length > 0
+      ""#{name}: #{disposition_type}#{p}\r\n""
+    end
+",""
+Mail::ContentDispositionField,decoded,"","",String,"    def decoded
+      p = ""; #{parameters.decoded}"" if parameters.length > 0
+      ""#{disposition_type}#{p}""
+    end
+",""
+Mail::KeywordsField,element,"","",Mail::PhraseList,"    def element
+      @element ||= PhraseList.new(value)
+    end
+",""
+Mail::KeywordsField,keywords,"","",Array<String>,"    def keywords
+      element.phrases
+    end
+",""
+Mail::KeywordsField,default,"","",Array<String>,"    def default
+      keywords
+    end
+",""
+Mail::KeywordsField,do_decode,"","",String,"      def do_decode
+        keywords.join(', ')
+      end
+",""
+Mail::KeywordsField,do_encode,"","",String,"      def do_encode
+        ""#{name}: #{keywords.join("",\r\n "")}\r\n""
+      end
+",""
+Mail::BccField,initialize,"value, charset","value => (Array<String> or String)
+charset => String
+",false,"    def initialize(value = nil, charset = nil)
+      super
+      self.include_in_headers = false
+    end
+",""
+Mail::BccField,encoded,"","",String,"    def encoded
+      if include_in_headers
+        super
+      else
+        ''
+      end
+    end
+","# Bcc field should not be :encoded by default
+"
+Mail::ContentLocationField,element,"","",Mail::ContentLocationElement,"    def element
+      @element ||= Mail::ContentLocationElement.new(value)
+    end
+",""
+Mail::ContentLocationField,location,"","",String,"    def location
+      element.location
+    end
+",""
+Mail::ContentLocationField,encoded,"","",String,"    def encoded
+      ""#{name}: #{location}\r\n""
+    end
+",""
+Mail::ContentLocationField,decoded,"","",String,"    def decoded
+      location
+    end
+",""
+Mail::InReplyToField,initialize,"value, charset","value => (Array<String> or String)
+charset => String
+",String,"    def initialize(value = nil, charset = nil)
+      if value.is_a?(Array)
+        super value.join(""\r\n\s""), charset
+      else
+        super
+      end
+    end
+",""
+Mail::ParameterHash,[],key_name,"key_name => (String or Symbol)
+",String,"    def [](key_name)
+      key_pattern = Regexp.escape(key_name.to_s)
+      pairs = []
+      exact = nil
+
+      each do |k,v|
+        if k =~ /^#{key_pattern}(\*|$)/i
+          if $1 == Constants::ASTERISK
+            pairs << [k, v]
+          else
+            exact = k
+          end
+        end
+      end
+
+      if pairs.empty? # Just dealing with a single value pair
+        super(exact || key_name)
+      else # Dealing with a multiple value pair or a single encoded value pair
+        string = pairs.sort { |a,b| a.first.to_s <=> b.first.to_s }.map { |v| v.last }.join('')
+        if mt = string.match(/([\w\-]+)?'(\w\w)?'(.*)/)
+          string = mt[3]
+          encoding = mt[1]
+        else
+          encoding = nil
+        end
+        Mail::Encodings.param_decode(string, encoding)
+      end
+    end
+",""
+Mail::ParameterHash,encoded,"","",String,"    def encoded
+      map.sort_by { |a| a.first.to_s }.map! do |key_name, value|
+        unless value.ascii_only?
+          value = Mail::Encodings.param_encode(value)
+          key_name = ""#{key_name}*""
+        end
+        %Q{#{key_name}=#{Utilities.quote_token(value)}}
+      end.join("";\r\n\s"")
+    end
+",""
+Mail::ParameterHash,decoded,"","",String,"    def decoded
+      map.sort_by { |a| a.first.to_s }.map! do |key_name, value|
+        %Q{#{key_name}=#{Utilities.quote_token(value)}}
+      end.join(""; "")
+    end
+",""
+Mail::ReceivedField,element,"","",Mail::ReceivedElement,"    def element
+      @element ||= Mail::ReceivedElement.new(value)
+    end
+",""
+Mail::ReceivedField,date_time,"","",DateTime,"    def date_time
+      @datetime ||= element.date_time
+    end
+",""
+Mail::ReceivedField,info,"","",String,"    def info
+      element.info
+    end
+",""
+Mail::ReceivedField,formatted_date,"","",String,"    def formatted_date
+      if date_time.respond_to? :strftime and date_time.respond_to? :zone
+        date_time.strftime(""%a, %d %b %Y %H:%M:%S "") + date_time.zone.delete(':')
+      end
+    end
+",""
+Mail::ReceivedField,do_encode,"","",String,"      def do_encode
+        if Utilities.blank?(value)
+          ""#{name}: \r\n""
+        else
+          ""#{name}: #{info}; #{formatted_date}\r\n""
+        end
+      end
+",""
+Mail::ReceivedField,do_decode,"","",String,"      def do_decode
+        if Utilities.blank?(value)
+          """"
+        else
+          ""#{info}; #{formatted_date}""
+        end
+      end
+",""
+Mail::MimeVersionField,initialize,"value, charset","value => String
+charset => String
+",String,"    def initialize(value = nil, charset = nil)
+      value = '1.0' if Utilities.blank?(value)
+      super value, charset
+    end
+",""
+Mail::MimeVersionField,element,"","",Mail::MimeVersionElement,"    def element
+      @element ||= Mail::MimeVersionElement.new(value)
+    end
+",""
+Mail::MimeVersionField,version,"","",String,"    def version
+      ""#{element.major}.#{element.minor}""
+    end
+",""
+Mail::MimeVersionField,major,"","",Integer,"    def major
+      element.major.to_i
+    end
+",""
+Mail::MimeVersionField,minor,"","",Integer,"    def minor
+      element.minor.to_i
+    end
+",""
+Mail::MimeVersionField,encoded,"","",String,"    def encoded
+      ""#{name}: #{version}\r\n""
+    end
+",""
+Mail::MimeVersionField,decoded,"","",String,"    def decoded
+      version
+    end
+",""
+Mail::MessageIdField,initialize,"value, charset","value => String
+charset => String
+",String,"    def initialize(value = nil, charset = nil)
+      value = Mail::Utilities.generate_message_id if Utilities.blank?(value)
+      super value, charset
+    end
+",""
+Mail::MessageIdField,message_ids,"","",Array<String>,"    def message_ids
+      [message_id]
+    end
+",""
+Mail::OptionalField,do_encode,"","",String,"      def do_encode
+        ""#{wrapped_value}\r\n""
+      end
+",""
+Mail::NamedStructuredField,initialize,"value, charset","value => (Array<(Hash<String, String> or String)> or Array<(Hash<Symbol, String> or String)> or Class or String)
+charset => String
+",String,"    def initialize(value = nil, charset = nil)
+      super self.class::NAME, value, charset
+    end
+",""
+Mail::NamedUnstructuredField,initialize,"value, charset","value => (Mail::SubjectField or String)
+charset => String
+",(Encoding or String),"    def initialize(value = nil, charset = nil)
+      super self.class::NAME, value, charset
+    end
+",""
+Mail::CommonField,initialize,"name, value, charset","name => String
+value => (Array<(Hash<String, String> or String)> or Array<(Hash<Symbol, String> or String)> or Class or String)
+charset => (Encoding or String)
+",(Encoding or String),"    def initialize(name = nil, value = nil, charset = nil)
+      @errors = []
+
+      self.name = name
+      self.value = value
+      self.charset = charset || 'utf-8'
+    end
+",""
+Mail::CommonField,singular?,"","",(false or true),"    def singular?
+      self.class.singular?
+    end
+",""
+Mail::CommonField,value=,value,"value => (Array<(Hash<String, String> or String)> or Array<(Hash<Symbol, String> or String)> or Class or String)
+",(Mail::StructuredField or Mail::UnstructuredField),"    def value=(value)
+      @element = nil
+      @value = value.is_a?(Array) ? value : value.to_s
+      parse
+    end
+",""
+Mail::CommonField,parse,"","",Mail::StructuredField,"    def parse
+      tap(&:element)
+    end
+",""
+Mail::CommonField,element,"","",nil,"    def element
+      nil
+    end
+",""
+Mail::CommonField,to_s,"","",String,"    def to_s
+      decoded.to_s
+    end
+",""
+Mail::CommonField,default,"","",String,"    def default
+      decoded
+    end
+",""
+Mail::CommonField,decoded,"","",String,"    def decoded
+      do_decode
+    end
+",""
+Mail::CommonField,encoded,"","",String,"    def encoded
+      do_encode
+    end
+",""
+Mail::CommonField,ensure_filename_quoted,value,"value => (Array<(Hash<String, String> or String)> or Array<(Hash<Symbol, String> or String)> or String)
+","(Array<(Hash<String, String> or String)> or Array<(Hash<Symbol, String> or String)> or String)","    def ensure_filename_quoted(value)
+      if value.is_a?(String)
+        value.sub FILENAME_RE, '\1=""\2""'
+      else
+        value
+      end
+    end
+",""
+Mail::CommonMessageIdField,element,"","",Mail::MessageIdsElement,"    def element
+      @element ||= Mail::MessageIdsElement.new(value)
+    end
+",""
+Mail::CommonMessageIdField,message_id,"","",String,"    def message_id
+      element.message_id
+    end
+",""
+Mail::CommonMessageIdField,message_ids,"","",(Array<%bot> or Array<String>),"    def message_ids
+      element.message_ids
+    end
+",""
+Mail::CommonMessageIdField,default,"","",(Array<%bot> or Array<String> or String),"    def default
+      ids = message_ids
+      ids.one? ? ids.first : ids
+    end
+",""
+Mail::CommonMessageIdField,to_s,"","",String,"    def to_s
+      decoded.to_s
+    end
+",""
+Mail::CommonMessageIdField,do_encode,"","",String,"      def do_encode
+        %Q{#{name}: #{formatted_message_ids(""\r\n "")}\r\n}
+      end
+",""
+Mail::CommonMessageIdField,do_decode,"","",String,"      def do_decode
+        formatted_message_ids
+      end
+",""
+Mail::CommonMessageIdField,formatted_message_ids,join,"join => String
+",String,"      def formatted_message_ids(join = ' ')
+        message_ids.map { |m| ""<#{m}>"" }.join(join) if message_ids.any?
+      end
+",""
+Mail::ContentTransferEncodingField,initialize,"value, charset","value => (Class or String)
+charset => String
+",String,"    def initialize(value = nil, charset = nil)
+      super self.class.normalize_content_transfer_encoding(value), charset
+    end
+",""
+Mail::ContentTransferEncodingField,element,"","",Mail::ContentTransferEncodingElement,"    def element
+      @element ||= Mail::ContentTransferEncodingElement.new(value)
+    end
+",""
+Mail::ContentTransferEncodingField,encoding,"","",String,"    def encoding
+      element.encoding
+    end
+",""
+Mail::ContentTransferEncodingField,do_encode,"","",String,"      def do_encode
+        ""#{name}: #{encoding}\r\n""
+      end
+",""
+Mail::ContentTransferEncodingField,do_decode,"","",String,"      def do_decode
+        encoding
+      end
+",""
+[s]Mail::ContentTypeField,singular?,"","",true,"      def singular?
+        true
+      end
+",""
+[s]Mail::ContentTypeField,with_boundary,type,"type => String
+",Mail::ContentTypeField,"      def with_boundary(type)
+        new ""#{type}; boundary=#{generate_boundary}""
+      end
+",""
+[s]Mail::ContentTypeField,generate_boundary,"","",String,"      def generate_boundary
+        ""--==_mimepart_#{Mail.random_tag}""
+      end
+",""
+Mail::ContentTypeField,initialize,"value, charset","value => (Array<(Hash<String, String> or String)> or Array<(Hash<Symbol, String> or String)> or String)
+charset => String
+",String,"    def initialize(value = nil, charset = nil)
+      if value.is_a? Array
+        @main_type = value[0]
+        @sub_type = value[1]
+        @parameters = ParameterHash.new.merge!(value.last)
+      else
+        @main_type = nil
+        @sub_type = nil
+        value = value.to_s
+      end
+
+      super ensure_filename_quoted(value), charset
+    end
+",""
+Mail::ContentTypeField,element,"","",Mail::ContentTypeElement,"    def element
+      @element ||=
+        begin
+          Mail::ContentTypeElement.new(value)
+        rescue Mail::Field::ParseError
+          attempt_to_clean
+        end
+    end
+",""
+Mail::ContentTypeField,attempt_to_clean,"","",Mail::ContentTypeElement,"    def attempt_to_clean
+      # Sanitize the value, handle special cases
+      Mail::ContentTypeElement.new(sanitize(value))
+    rescue Mail::Field::ParseError
+      # All else fails, just get the MIME media type
+      Mail::ContentTypeElement.new(get_mime_type(value))
+    end
+",""
+Mail::ContentTypeField,main_type,"","",String,"    def main_type
+      @main_type ||= element.main_type
+    end
+",""
+Mail::ContentTypeField,sub_type,"","",String,"    def sub_type
+      @sub_type ||= element.sub_type
+    end
+",""
+Mail::ContentTypeField,string,"","",String,"    def string
+      ""#{main_type}/#{sub_type}""
+    end
+",""
+Mail::ContentTypeField,default,"","",String,"    def default
+      decoded
+    end
+",""
+Mail::ContentTypeField,parameters,"","","(Hash<%bot, %bot> or Hash<String, String>)","    def parameters
+      unless defined? @parameters
+        @parameters = ParameterHash.new
+        element.parameters.each { |p| @parameters.merge!(p) }
+      end
+      @parameters
+    end
+",""
+Mail::ContentTypeField,value,"","",String,"    def value
+      if @value.is_a? Array
+        ""#{@main_type}/#{@sub_type}; #{stringify(parameters)}""
+      else
+        @value
+      end
+    end
+",""
+Mail::ContentTypeField,stringify,params,"params => Hash<String, String>
+",String,"    def stringify(params)
+      params.map { |k,v| ""#{k}=#{Encodings.param_encode(v)}"" }.join(""; "")
+    end
+",""
+Mail::ContentTypeField,filename,"","",String,"    def filename
+      @filename ||= parameters['filename'] || parameters['name']
+    end
+",""
+Mail::ContentTypeField,encoded,"","",String,"    def encoded
+      p = "";\r\n\s#{parameters.encoded}"" if parameters && parameters.length > 0
+      ""#{name}: #{content_type}#{p}\r\n""
+    end
+",""
+Mail::ContentTypeField,decoded,"","",String,"    def decoded
+      p = ""; #{parameters.decoded}"" if parameters && parameters.length > 0
+      ""#{content_type}#{p}""
+    end
+",""
+Mail::ContentTypeField,method_missing,"name, args, block","name => Symbol
+args => Array<RDL::Type::NominalType>
+block => nil
+",String,"    def method_missing(name, *args, &block)
+      if name.to_s =~ /(\w+)=/
+        self.parameters[$1] = args.first
+        @value = ""#{content_type}; #{stringify(parameters)}""
+      else
+        super
+      end
+    end
+",""
+Mail::ContentTypeField,sanitize,val,"val => String
+",String,"    def sanitize(val)
+      # TODO: check if there are cases where whitespace is not a separator
+      val = val.
+        gsub(/\s*=\s*/,'='). # remove whitespaces around equal sign
+        gsub(/[; ]+/, '; '). #use '; ' as a separator (or EOL)
+        gsub(/;\s*$/,'') #remove trailing to keep examples below
+
+      if val =~ /(boundary=(\S*))/i
+        val = ""#{$`.downcase}boundary=#{$2}#{$'.downcase}""
+      else
+        val.downcase!
+      end
+
+      case
+      when val.chomp =~ /^\s*([\w\-]+)\/([\w\-]+)\s*;\s?(ISO[\w\-]+)$/i
+        # Microsoft helper:
+        # Handles 'type/subtype;ISO-8559-1'
+        ""#{$1}/#{$2}; charset=#{Utilities.quote_atom($3)}""
+      when val.chomp =~ /^text;?$/i
+        # Handles 'text;' and 'text'
+        ""text/plain;""
+      when val.chomp =~ /^(\w+);\s(.*)$/i
+        # Handles 'text; <parameters>'
+        ""text/plain; #{$2}""
+      when val =~ /([\w\-]+\/[\w\-]+);\scharset=""charset=""(\w+)""""/i
+        # Handles text/html; charset=""charset=""GB2312""""
+        ""#{$1}; charset=#{Utilities.quote_atom($2)}""
+      when val =~ /([\w\-]+\/[\w\-]+);\s+(.*)/i
+        type = $1
+        # Handles misquoted param values
+        # e.g: application/octet-stream; name=archiveshelp1[1].htm
+        # and: audio/x-midi;\r\n\sname=Part .exe
+        params = $2.to_s.split(/\s+/)
+        params = params.map { |i| i.to_s.chomp.strip }
+        params = params.map { |i| i.split(/\s*\=\s*/, 2) }
+        params = params.map { |i| ""#{i[0]}=#{Utilities.dquote(i[1].to_s.gsub(/;$/,""""))}"" }.join('; ')
+        ""#{type}; #{params}""
+      when val =~ /^\s*$/
+        'text/plain'
+      else
+        val
+      end
+    end
+","# Various special cases from random emails found that I am not going to change
+# the parser for
+"
+Mail::ContentTypeField,get_mime_type,val,"val => String
+",String,"    def get_mime_type(val)
+      case val
+      when /^([\w\-]+)\/([\w\-]+);.+$/i
+        ""#{$1}/#{$2}""
+      else
+        'text/plain'
+      end
+    end
+",""
+Mail::CommonDateField,initialize,"value, charset","value => (String or Time)
+charset => String
+",String,"    def initialize(value = nil, charset = nil)
+      super self.class.normalize_datetime(value), charset
+    end
+",""
+Mail::CommonDateField,date_time,"","",DateTime,"    def date_time
+      ::DateTime.parse(""#{element.date_string} #{element.time_string}"")
+    rescue ArgumentError => e
+      raise e unless e.message == 'invalid date'
+    end
+","# Returns a date time object of the parsed date
+"
+Mail::CommonDateField,default,"","",DateTime,"    def default
+      date_time
+    end
+",""
+Mail::CommonDateField,element,"","",Mail::DateTimeElement,"    def element
+      @element ||= Mail::DateTimeElement.new(value)
+    end
+",""
+Mail::CommonDateField,do_encode,"","",String,"      def do_encode
+        ""#{name}: #{value}\r\n""
+      end
+",""
+Mail::CommonDateField,do_decode,"","",String,"      def do_decode
+        value.to_s
+      end
+",""
+Mail::Matchers,any_attachment,"","",Mail::Matchers::AnyAttachmentMatcher,"    def any_attachment
+      AnyAttachmentMatcher.new
+    end
+",""
+Mail::Matchers,an_attachment_with_filename,filename,"filename => String
+",Mail::Matchers::AttachmentFilenameMatcher,"    def an_attachment_with_filename(filename)
+      AttachmentFilenameMatcher.new(filename)
+    end
+",""
+Mail::Matchers::AnyAttachmentMatcher,===,other,"other => Mail::Part
+",true,"      def ===(other)
+        other.attachment?
+      end
+",""
+Mail::Matchers::AttachmentFilenameMatcher,initialize,filename,"filename => String
+",String,"      def initialize(filename)
+        @filename = filename
+      end
+",""
+Mail::Matchers::AttachmentFilenameMatcher,===,other,"other => Mail::Part
+",(false or true),"      def ===(other)
+        other.attachment? && other.filename == filename
+      end
+",""
+Mail::Matchers,have_sent_email,"","",Mail::Matchers::HasSentEmailMatcher,"    def have_sent_email
+      HasSentEmailMatcher.new(self)
+    end
+",""
+Mail::Matchers::HasSentEmailMatcher,initialize,_context,"_context => (RSpec::ExampleGroups::HaveSentEmail::WithAHugeChainOfModifiers or RSpec::ExampleGroups::HaveSentEmail::WithBcc::AndAMatchingRecipient or RSpec::ExampleGroups::HaveSentEmail::WithBcc::AndANonMatchingRecipient or RSpec::ExampleGroups::HaveSentEmail::WithCc::AndAMatchingRecipient or RSpec::ExampleGroups::HaveSentEmail::WithCc::AndANonMatchingRecipient or RSpec::ExampleGroups::HaveSentEmail::WithFrom::AndAMatchingSender or RSpec::ExampleGroups::HaveSentEmail::WithFrom::AndANonMatchingSender or RSpec::ExampleGroups::HaveSentEmail::WithHtmlMail::WhenHtmlMailHasBeenSent::WithHtmlPart::AndAMatchingHtmlPartBody or RSpec::ExampleGroups::HaveSentEmail::WithHtmlMail::WhenHtmlMailHasBeenSent::WithHtmlPart::AndANonMatchingHtmlPartBody or RSpec::ExampleGroups::HaveSentEmail::WithHtmlMail::WhenHtmlMailHasBeenSent::WithTextPart::AndAMatchingTextPartBody or RSpec::ExampleGroups::HaveSentEmail::WithHtmlMail::WhenHtmlMailHasBeenSent::WithTextPart::AndANonMatchingTextPartBody or RSpec::ExampleGroups::HaveSentEmail::WithMatchingBody::AndAMatchingBody or RSpec::ExampleGroups::HaveSentEmail::WithMatchingBody::AndANonMatchingBody or RSpec::ExampleGroups::HaveSentEmail::WithSubject::AndAMatchingSubject or RSpec::ExampleGroups::HaveSentEmail::WithSubject::AndANonMatchingSubject or RSpec::ExampleGroups::HaveSentEmail::WithSubjectMatching::AndAMatchingSubject or RSpec::ExampleGroups::HaveSentEmail::WithSubjectMatching::AndANonMatchingSubject or RSpec::ExampleGroups::HaveSentEmail::WithTo::AndAMatchingRecipient or RSpec::ExampleGroups::HaveSentEmail::WithTo::AndANonMatchingRecipient or RSpec::ExampleGroups::HaveSentEmail::WithWithAttachments::AndAnyAttachments or RSpec::ExampleGroups::HaveSentEmail::WithWithAttachments::AndMatchingAttachments::AnyAttachmentPassed or RSpec::ExampleGroups::HaveSentEmail::WithWithAttachments::AndMatchingAttachments::ArrayOfAttachmentsPassed or RSpec::ExampleGroups::HaveSentEmail::WithWithAttachments::AndMatchingAttachments::AttachmentOrderIsImportant or RSpec::ExampleGroups::HaveSentEmail::WithWithAttachments::AndMatchingAttachments::CeMatching or RSpec::ExampleGroups::HaveSentEmail::WithWithAttachments::AndMatchingAttachments::ChainingAttachmentMatching or RSpec::ExampleGroups::HaveSentEmail::WithWithAttachments::AndMatchingAttachments::MatchingByFilename or RSpec::ExampleGroups::HaveSentEmail::WithWithAttachments::AndMatchingAttachments::SingleAttachmentPassed or RSpec::ExampleGroups::HaveSentEmail::WithWithAttachments::AndNoAttachments or RSpec::ExampleGroups::HaveSentEmail::WithWithAttachments::AndNonMatchingAttachments or RSpec::ExampleGroups::HaveSentEmail::WithWithBody::AndAMatchingBody or RSpec::ExampleGroups::HaveSentEmail::WithWithBody::AndANonMatchingBody or RSpec::ExampleGroups::HaveSentEmail::WithoutAnyModifiers::WhenEMailHasBeenSent or RSpec::ExampleGroups::HaveSentEmail::WithoutAnyModifiers::WhenNoEMailHasBeenSent)
+",nil,"      def initialize(_context)
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matches?,subject,"subject => String
+",(false or true),"      def matches?(subject)
+        matching_deliveries = filter_matched_deliveries(Mail::TestMailer.deliveries)
+        !(matching_deliveries.empty?)
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,from,sender,"sender => String
+",Mail::Matchers::HasSentEmailMatcher,"      def from(sender)
+        @sender = sender
+        self
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,to,recipient_or_list,"recipient_or_list => (Array<String> or String)
+",Mail::Matchers::HasSentEmailMatcher,"      def to(recipient_or_list)
+        @recipients ||= []
+
+        if recipient_or_list.kind_of?(Array)
+          @recipients += recipient_or_list
+        else
+          @recipients << recipient_or_list
+        end
+        self
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,cc,recipient_or_list,"recipient_or_list => (Array<String> or String)
+",Mail::Matchers::HasSentEmailMatcher,"      def cc(recipient_or_list)
+        @copy_recipients ||= []
+
+        if recipient_or_list.kind_of?(Array)
+          @copy_recipients += recipient_or_list
+        else
+          @copy_recipients << recipient_or_list
+        end
+        self
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,bcc,recipient_or_list,"recipient_or_list => (Array<String> or String)
+",Mail::Matchers::HasSentEmailMatcher,"      def bcc(recipient_or_list)
+        @blind_copy_recipients ||= []
+        @blind_copy_recipients.concat(Array(recipient_or_list))
+        self
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,with_attachments,attachments,"attachments => (Array<Mail::Matchers::AnyAttachmentMatcher> or Array<Mail::Part> or Mail::Matchers::AttachmentFilenameMatcher or Mail::Part or String)
+",Mail::Matchers::HasSentEmailMatcher,"      def with_attachments(attachments)
+        @attachments ||= []
+        @attachments.concat(Array(attachments))
+        self
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,with_no_attachments,"","",Mail::Matchers::HasSentEmailMatcher,"      def with_no_attachments
+        @having_attachments = false
+        self
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,with_any_attachments,"","",Mail::Matchers::HasSentEmailMatcher,"      def with_any_attachments
+        @having_attachments = true
+        self
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,with_subject,subject,"subject => String
+",Mail::Matchers::HasSentEmailMatcher,"      def with_subject(subject)
+        @subject = subject
+        self
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matching_subject,subject_matcher,"subject_matcher => Regexp
+",Mail::Matchers::HasSentEmailMatcher,"      def matching_subject(subject_matcher)
+        @subject_matcher = subject_matcher
+        self
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,with_body,body,"body => String
+",Mail::Matchers::HasSentEmailMatcher,"      def with_body(body)
+        @body = body
+        self
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matching_body,body_matcher,"body_matcher => Regexp
+",Mail::Matchers::HasSentEmailMatcher,"      def matching_body(body_matcher)
+        @body_matcher = body_matcher
+        self
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,with_html,body,"body => String
+",Mail::Matchers::HasSentEmailMatcher,"      def with_html(body)
+        @html_part_body = body
+        self
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,with_text,body,"body => String
+",Mail::Matchers::HasSentEmailMatcher,"      def with_text(body)
+        @text_part_body = body
+        self
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,description,"","",String,"      def description
+        result = ""send a matching email""
+        result
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,filter_matched_deliveries,deliveries,"deliveries => (Array<%bot> or Array<Mail::Message>)
+",(Array<%bot> or Array<Mail::Message>),"      def filter_matched_deliveries(deliveries)
+        candidate_deliveries = deliveries
+        modifiers =
+          %w(sender recipients copy_recipients blind_copy_recipients subject
+          subject_matcher body body_matcher html_part_body text_part_body  having_attachments attachments)
+        modifiers.each do |modifier_name|
+          next unless instance_variable_defined?(""@#{modifier_name}"")
+          candidate_deliveries = candidate_deliveries.select{|matching_delivery| self.send(""matches_on_#{modifier_name}?"", matching_delivery)}
+        end
+
+        candidate_deliveries
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matches_on_sender?,delivery,"delivery => Mail::Message
+",(false or true),"      def matches_on_sender?(delivery)
+        delivery.from.include?(@sender)
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matches_on_recipients?,delivery,"delivery => Mail::Message
+",(false or true),"      def matches_on_recipients?(delivery)
+        @recipients.all? {|recipient| delivery.to.include?(recipient) }
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matches_on_copy_recipients?,delivery,"delivery => Mail::Message
+",(false or true),"      def matches_on_copy_recipients?(delivery)
+        @copy_recipients.all? {|recipient| delivery.cc.include?(recipient) }
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matches_on_blind_copy_recipients?,delivery,"delivery => Mail::Message
+",(false or true),"      def matches_on_blind_copy_recipients?(delivery)
+        @blind_copy_recipients.all? {|recipient| delivery.bcc.include?(recipient) }
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matches_on_subject?,delivery,"delivery => Mail::Message
+",(false or true),"      def matches_on_subject?(delivery)
+        delivery.subject == @subject
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matches_on_subject_matcher?,delivery,"delivery => Mail::Message
+",MatchData,"      def matches_on_subject_matcher?(delivery)
+        @subject_matcher.match delivery.subject
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matches_on_having_attachments?,delivery,"delivery => Mail::Message
+",true,"      def matches_on_having_attachments?(delivery)
+        @having_attachments && delivery.attachments.any? ||
+          (!@having_attachments && delivery.attachments.none?)
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matches_on_attachments?,delivery,"delivery => Mail::Message
+",(false or true),"      def matches_on_attachments?(delivery)
+        @attachments.each_with_index.inject( true ) do |sent_attachments, (attachment, index)|
+          sent_attachments &&= (attachment === delivery.attachments[index])
+        end
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matches_on_body?,delivery,"delivery => Mail::Message
+",(false or true),"      def matches_on_body?(delivery)
+        delivery.body == @body
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matches_on_body_matcher?,delivery,"delivery => Mail::Message
+",MatchData,"      def matches_on_body_matcher?(delivery)
+        @body_matcher.match delivery.body.raw_source
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matches_on_html_part_body?,delivery,"delivery => Mail::Message
+",(false or true),"      def matches_on_html_part_body?(delivery)
+        delivery.html_part.body == @html_part_body
+      end
+",""
+Mail::Matchers::HasSentEmailMatcher,matches_on_text_part_body?,delivery,"delivery => Mail::Message
+",(false or true),"      def matches_on_text_part_body?(delivery)
+        delivery.text_part.body == @text_part_body
+      end
+",""

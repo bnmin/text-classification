@@ -23,6 +23,7 @@ from tensorflow.contrib import learn
 tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for validation")
 tf.flags.DEFINE_string("positive_data_file", "./data/rt-polaritydata/rt-polarity.pos", "Data source for the positive data.")
 tf.flags.DEFINE_string("negative_data_file", "./data/rt-polaritydata/rt-polarity.neg", "Data source for the negative data.")
+tf.flags.DEFINE_string("data_file", "./data/type_inference_test.txt", "Data file.")
 
 # Model Hyperparameters
 tf.flags.DEFINE_integer("embedding_dim", 128, "Dimensionality of character embedding (default: 128)")
@@ -30,7 +31,7 @@ tf.flags.DEFINE_float("l2_reg_lambda", 0.0, "L2 regularization lambda (default: 
 tf.flags.DEFINE_integer("hidden_size", 128, "Dimensionality of character embedding (Default: 128)")
 
 # for RNN
-tf.flags.DEFINE_string("cell_type", "vanilla", "Type of rnn cell. Choose 'vanilla' or 'lstm' or 'gru' (Default: vanilla)")
+tf.flags.DEFINE_string("cell_type", "gru", "Type of rnn cell. Choose 'vanilla' or 'lstm' or 'gru' (Default: vanilla)")
 
 # for CNN
 tf.flags.DEFINE_string("filter_sizes", "3,4,5", "Comma-separated filter sizes (default: '3,4,5')")
@@ -40,7 +41,7 @@ tf.flags.DEFINE_float("dropout_keep_prob", 0.5, "Dropout keep probability (defau
 
 
 # Training parameters
-tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
+tf.flags.DEFINE_integer("batch_size", 2, "Batch Size (default: 64)")
 tf.flags.DEFINE_integer("num_epochs", 200, "Number of training epochs (default: 200)")
 tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
@@ -64,12 +65,13 @@ print("")
 
 # Load data
 print("Loading data...")
-x_text, y = data_helpers.load_data_and_labels(FLAGS.positive_data_file, FLAGS.negative_data_file)
+x_text, y = data_helpers.load_data_and_labels(FLAGS.data_file) #, FLAGS.negative_data_file)
 
 # Build vocabulary
 max_document_length = max([len(x.split(" ")) for x in x_text])
 vocab_processor = learn.preprocessing.VocabularyProcessor(max_document_length)
 x = np.array(list(vocab_processor.fit_transform(x_text)))
+y = np.array(y)
 
 # Randomly shuffle data
 np.random.seed(10)
@@ -105,26 +107,26 @@ with tf.Graph().as_default():
         # ###################################################################### CNN
 
         ###################################################################### RNN
-        # nn = RNN(
+        nn = RNN(
+            sequence_length=x_train.shape[1],
+            num_classes=3, # y_train.shape[1]
+            vocab_size=len(vocab_processor.vocabulary_),
+            embedding_size=FLAGS.embedding_dim,
+            cell_type=FLAGS.cell_type,
+            hidden_size=FLAGS.hidden_size,
+            l2_reg_lambda=FLAGS.l2_reg_lambda
+        )
+        ###################################################################### RNN
+
+        #################################################################### MLP
+        # nn = MLP(
         #     sequence_length=x_train.shape[1],
         #     num_classes=y_train.shape[1],
         #     vocab_size=len(vocab_processor.vocabulary_),
         #     embedding_size=FLAGS.embedding_dim,
-        #     cell_type=FLAGS.cell_type,
-        #     hidden_size=FLAGS.hidden_size,
+        #     hidden_size = FLAGS.hidden_size,
         #     l2_reg_lambda=FLAGS.l2_reg_lambda
         # )
-        ###################################################################### RNN
-
-        #################################################################### MLP
-        nn = MLP(
-            sequence_length=x_train.shape[1],
-            num_classes=y_train.shape[1],
-            vocab_size=len(vocab_processor.vocabulary_),
-            embedding_size=FLAGS.embedding_dim,
-            hidden_size = FLAGS.hidden_size,
-            l2_reg_lambda=FLAGS.l2_reg_lambda
-        )
         ##################################################################### MLP
 
         # Define Training procedure

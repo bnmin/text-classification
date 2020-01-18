@@ -1,0 +1,1061 @@
+Class,Method,Parameter Names,Observed Arg Types,Observed Return Type,Source Code,Comments
+Money::FormattingRules,initialize,"currency, raw_rules","currency => Money::Currency
+raw_rules => (Array<%bot> or Array<RDL::Type::GenericType> or Array<RDL::Type::NominalType>)
+",nil,"    def initialize(currency, *raw_rules)
+      @currency = currency
+
+      # support for old format parameters
+      @rules = normalize_formatting_rules(raw_rules)
+
+      @rules = default_formatting_rules.merge(@rules) unless @rules[:ignore_defaults]
+      @rules = localize_formatting_rules(@rules)
+      @rules = translate_formatting_rules(@rules) if @rules[:translate]
+      @rules[:format] ||= determine_format_from_formatting_rules(@rules)
+
+      warn_about_deprecated_rules(@rules)
+    end
+",""
+Money::FormattingRules,[],key,"key => Symbol
+",(String or false or true),"    def [](key)
+      @rules[key]
+    end
+",""
+Money::FormattingRules,has_key?,key,"key => Symbol
+",(false or true),"    def has_key?(key)
+      @rules.has_key? key
+    end
+",""
+Money::FormattingRules,normalize_formatting_rules,rules,"rules => Array<%bot>
+","(Hash<%bot, %bot> or Hash<Symbol, (String or Symbol or false)> or Hash<Symbol, (String or Symbol or true)> or Hash<Symbol, (String or Symbol)> or Hash<Symbol, (String or false or true)> or Hash<Symbol, (String or false)> or Hash<Symbol, (String or true)> or Hash<Symbol, (Symbol or false)> or Hash<Symbol, (Symbol or true)> or Hash<Symbol, (false or nil)> or Hash<Symbol, (false or true)> or Hash<Symbol, (nil or true)> or Hash<Symbol, String> or Hash<Symbol, Symbol> or Hash<Symbol, false> or Hash<Symbol, nil> or Hash<Symbol, true>)","    def normalize_formatting_rules(rules)
+      if rules.size == 0
+        rules = {}
+      elsif rules.size == 1
+        rules = rules.pop
+        rules = rules.dup if rules.is_a?(Hash)
+
+        if rules.is_a?(Symbol)
+          warn '[DEPRECATION] Use Hash when passing rules to Money#format.'
+          rules = { rules => true }
+        end
+      end
+
+      if !rules.include?(:decimal_mark) && rules.include?(:separator)
+        rules[:decimal_mark] = rules[:separator]
+      end
+
+      if !rules.include?(:thousands_separator) && rules.include?(:delimiter)
+        rules[:thousands_separator] = rules[:delimiter]
+      end
+
+      rules
+    end
+","# Cleans up formatting rules.
+#
+# @param [Hash] rules
+#
+# @return [Hash]
+"
+Money::FormattingRules,default_formatting_rules,"","","(Hash<%bot, %bot> or Hash<Symbol, String>)","    def default_formatting_rules
+      Money.default_formatting_rules || {}
+    end
+",""
+Money::FormattingRules,translate_formatting_rules,rules,"rules => Hash<Symbol, (String or true)>
+","Hash<Symbol, (String or true)>","    def translate_formatting_rules(rules)
+      begin
+        rules[:symbol] = I18n.t currency.iso_code, scope: ""number.currency.symbol"", raise: true
+      rescue I18n::MissingTranslationData
+        # Do nothing
+      end
+      rules
+    end
+",""
+Money::FormattingRules,localize_formatting_rules,rules,"rules => (Hash<%bot, %bot> or Hash<Symbol, (String or Symbol or false)> or Hash<Symbol, (String or Symbol or true)> or Hash<Symbol, (String or Symbol)> or Hash<Symbol, (String or false or true)> or Hash<Symbol, (String or false)> or Hash<Symbol, (String or true)> or Hash<Symbol, (Symbol or false)> or Hash<Symbol, (Symbol or true)> or Hash<Symbol, (false or nil)> or Hash<Symbol, (false or true)> or Hash<Symbol, (nil or true)> or Hash<Symbol, String> or Hash<Symbol, Symbol> or Hash<Symbol, false> or Hash<Symbol, nil> or Hash<Symbol, true>)
+","(Hash<%bot, %bot> or Hash<Symbol, (String or Symbol or false)> or Hash<Symbol, (String or Symbol or true)> or Hash<Symbol, (String or Symbol)> or Hash<Symbol, (String or false or true)> or Hash<Symbol, (String or false)> or Hash<Symbol, (String or true)> or Hash<Symbol, (Symbol or false)> or Hash<Symbol, (Symbol or true)> or Hash<Symbol, (false or nil)> or Hash<Symbol, (false or true)> or Hash<Symbol, (nil or true)> or Hash<Symbol, String> or Hash<Symbol, Symbol> or Hash<Symbol, false> or Hash<Symbol, nil> or Hash<Symbol, true>)","    def localize_formatting_rules(rules)
+      if currency.iso_code == ""JPY"" && I18n.locale == :ja
+        rules[:symbol] = ""円"" unless rules[:symbol] == false
+        rules[:format] = '%n%u'
+      end
+      rules
+    end
+",""
+Money::FormattingRules,determine_format_from_formatting_rules,rules,"rules => (Hash<%bot, %bot> or Hash<Symbol, (String or false or true)> or Hash<Symbol, (String or true)> or Hash<Symbol, (Symbol or false)> or Hash<Symbol, (Symbol or true)> or Hash<Symbol, (false or nil)> or Hash<Symbol, (false or true)> or Hash<Symbol, (nil or true)> or Hash<Symbol, String> or Hash<Symbol, Symbol> or Hash<Symbol, false> or Hash<Symbol, nil> or Hash<Symbol, true>)
+",String,"    def determine_format_from_formatting_rules(rules)
+      symbol_position = symbol_position_from(rules)
+
+      if symbol_position == :before
+        rules.fetch(:symbol_before_without_space, true) ? '%u%n' : '%u %n'
+      else
+        rules[:symbol_after_without_space] ? '%n%u' : '%n %u'
+      end
+    end
+",""
+Money::FormattingRules,symbol_position_from,rules,"rules => (Hash<%bot, %bot> or Hash<Symbol, (String or false or true)> or Hash<Symbol, (String or true)> or Hash<Symbol, (Symbol or false)> or Hash<Symbol, (Symbol or true)> or Hash<Symbol, (false or nil)> or Hash<Symbol, (false or true)> or Hash<Symbol, (nil or true)> or Hash<Symbol, String> or Hash<Symbol, Symbol> or Hash<Symbol, false> or Hash<Symbol, nil> or Hash<Symbol, true>)
+",Symbol,"    def symbol_position_from(rules)
+      if rules.has_key?(:symbol_position)
+        if [:before, :after].include?(rules[:symbol_position])
+          return rules[:symbol_position]
+        else
+          raise ArgumentError, "":symbol_position must be ':before' or ':after'""
+        end
+      elsif currency.symbol_first?
+        :before
+      else
+        :after
+      end
+    end
+",""
+Money::FormattingRules,warn_about_deprecated_rules,rules,"rules => (Hash<Symbol, (String or Symbol or false)> or Hash<Symbol, (String or Symbol or true)> or Hash<Symbol, (String or Symbol)> or Hash<Symbol, (String or false or true)> or Hash<Symbol, (String or false)> or Hash<Symbol, (String or true)> or Hash<Symbol, String>)
+",nil,"    def warn_about_deprecated_rules(rules)
+      if rules.has_key?(:symbol_position)
+        position = rules[:symbol_position]
+        template = position == :before ? '%u %n' : '%n %u'
+
+        warn ""[DEPRECATION] `symbol_position: :#{position}` is deprecated - you can replace it with `format: #{template}`""
+      end
+
+      if rules.has_key?(:symbol_before_without_space)
+        warn ""[DEPRECATION] `symbol_before_without_space:` option is deprecated - you can replace it with `format: '%u%n'`""
+      end
+
+      if rules.has_key?(:symbol_after_without_space)
+        warn ""[DEPRECATION] `symbol_after_without_space:` option is deprecated - you can replace it with `format: '%n%u'`""
+      end
+
+      if rules.has_key?(:html)
+        warn ""[DEPRECATION] `html` is deprecated - use `html_wrap` instead. Please note that `html_wrap` will wrap all parts of currency and if you use `with_currency` option, currency element class changes from `currency` to `money-currency`.""
+      end
+
+      if rules.has_key?(:html_wrap_symbol)
+        warn ""[DEPRECATION] `html_wrap_symbol` is deprecated - use `html_wrap` instead. Please note that `html_wrap` will wrap all parts of currency.""
+      end
+    end
+",""
+Money::Arithmetic,positive?,"","",(false or true),"    def positive?
+      fractional > 0
+    end
+","# Test if the amount is positive. Returns +true+ if the money amount is
+# greater than 0, +false+ otherwise.
+#
+# @return [Boolean]
+#
+# @example
+#   Money.new(1).positive?  #=> true
+#   Money.new(0).positive?  #=> false
+#   Money.new(-1).positive? #=> false
+"
+Money::Arithmetic,negative?,"","",(false or true),"    def negative?
+      fractional < 0
+    end
+","# Test if the amount is negative. Returns +true+ if the money amount is
+# less than 0, +false+ otherwise.
+#
+# @return [Boolean]
+#
+# @example
+#   Money.new(-1).negative? #=> true
+#   Money.new(0).negative?  #=> false
+#   Money.new(1).negative?  #=> false
+"
+Money::Arithmetic,div,value,"value => (Integer or Money)
+",(Float or Money),"    def div(value)
+      self / value
+    end
+","# Synonym for +#/+.
+#
+# @param [Money, Numeric] value Number to divide by.
+#
+# @return [Money] The resulting money if you divide Money by a number.
+# @return [Float] The resulting number if you divide Money by a Money.
+#
+# @see #/
+#
+"
+Money::Arithmetic,divmod_money,val,"val => Money
+",Array<(Integer or Money)>,"    def divmod_money(val)
+      cents = val.exchange_to(currency).cents
+      quotient, remainder = fractional.divmod(cents)
+      [quotient, self.class.new(remainder, currency, bank)]
+    end
+",""
+Money::Arithmetic,modulo,val,"val => (Integer or Money)
+",Money,"    def modulo(val)
+      divmod(val)[1]
+    end
+","# Equivalent to +self.divmod(val)[1]+
+#
+# @param [Money, Integer] val Number take modulo with.
+#
+# @return [Money]
+#
+# @example
+#   Money.new(100).modulo(9)            #=> #<Money @fractional=1>
+#   Money.new(100).modulo(Money.new(9)) #=> #<Money @fractional=1>
+"
+Money::Arithmetic,%,val,"val => (Integer or Money)
+",Money,"    def %(val)
+      modulo(val)
+    end
+","# Synonym for +#modulo+.
+#
+# @param [Money, Integer] val Number take modulo with.
+#
+# @return [Money]
+#
+# @see #modulo
+"
+Money::Arithmetic,remainder,val,"val => Integer
+",Money,"    def remainder(val)
+      if val.is_a?(Money) && currency != val.currency
+        val = val.exchange_to(currency)
+      end
+
+      if (fractional < 0 && val < 0) || (fractional > 0 && val > 0)
+        self.modulo(val)
+      else
+        self.modulo(val) - (val.is_a?(Money) ? val : self.class.new(val, currency, bank))
+      end
+    end
+","# If different signs +self.modulo(val) - val+ otherwise +self.modulo(val)+
+#
+# @param [Money, Integer] val Number to rake remainder with.
+#
+# @return [Money]
+#
+# @example
+#   Money.new(100).remainder(9) #=> #<Money @fractional=1>
+"
+Money::Arithmetic,zero?,"","",(false or true),"    def zero?
+      fractional == 0
+    end
+","# Test if the money amount is zero.
+#
+# @return [Boolean]
+#
+# @example
+#   Money.new(100).zero? #=> false
+#   Money.new(0).zero?   #=> true
+"
+Money::Arithmetic,nonzero?,"","",Money,"    def nonzero?
+      fractional != 0 ? self : nil
+    end
+","# Test if the money amount is non-zero. Returns this money object if it is
+# non-zero, or nil otherwise, like +Numeric#nonzero?+.
+#
+# @return [Money, nil]
+#
+# @example
+#   Money.new(100).nonzero? #=> #<Money @fractional=100>
+#   Money.new(0).nonzero?   #=> nil
+"
+Money::Arithmetic,coerce,other,"other => (BigDecimal or Float or Integer or Rational)
+",Array<(Money or Money::Arithmetic::CoercedNumeric)>,"    def coerce(other)
+      [self, CoercedNumeric.new(other)]
+    end
+","# Used to make Money instance handle the operations when arguments order is reversed
+# @return [Array]
+#
+# @example
+#   2 * Money.new(10) #=> #<Money @fractional=20>
+"
+Money::Formatter,initialize,"money, rules","money => Money
+rules => (Array<%bot> or Array<RDL::Type::GenericType> or Array<RDL::Type::NominalType>)
+",Money::FormattingRules,"    def initialize(money, *rules)
+      @money = money
+      @currency = money.currency
+      @rules = FormattingRules.new(@currency, *rules)
+    end
+","# Creates a formatted price string according to several rules.
+#
+# @param [Hash] rules The options used to format the string.
+#
+# @return [String]
+#
+# @option rules [Boolean, String] :display_free (false) Whether a zero
+#  amount of money should be formatted of ""free"" or as the supplied string.
+#
+# @example
+#   Money.us_dollar(0).format(display_free: true)     #=> ""free""
+#   Money.us_dollar(0).format(display_free: ""gratis"") #=> ""gratis""
+#   Money.us_dollar(0).format                            #=> ""$0.00""
+#
+# @option rules [Boolean] :with_currency (false) Whether the currency name
+#  should be appended to the result string.
+#
+# @example
+#   Money.ca_dollar(100).format #=> ""$1.00""
+#   Money.ca_dollar(100).format(with_currency: true) #=> ""$1.00 CAD""
+#   Money.us_dollar(85).format(with_currency: true)  #=> ""$0.85 USD""
+#
+# @option rules [Boolean] :rounded_infinite_precision (false) Whether the
+#  amount of money should be rounded when using {infinite_precision}
+#
+# @example
+#   Money.us_dollar(100.1).format #=> ""$1.001""
+#   Money.us_dollar(100.1).format(rounded_infinite_precision: true) #=> ""$1""
+#   Money.us_dollar(100.9).format(rounded_infinite_precision: true) #=> ""$1.01""
+#
+# @option rules [Boolean] :no_cents (false) Whether cents should be omitted.
+#
+# @example
+#   Money.ca_dollar(100).format(no_cents: true) #=> ""$1""
+#   Money.ca_dollar(599).format(no_cents: true) #=> ""$5""
+#
+# @option rules [Boolean] :no_cents_if_whole (false) Whether cents should be
+#  omitted if the cent value is zero
+#
+# @example
+#   Money.ca_dollar(10000).format(no_cents_if_whole: true) #=> ""$100""
+#   Money.ca_dollar(10034).format(no_cents_if_whole: true) #=> ""$100.34""
+#
+# @option rules [Boolean, String, nil] :symbol (true) Whether a money symbol
+#  should be prepended to the result string. The default is true. This method
+#  attempts to pick a symbol that's suitable for the given currency.
+#
+# @example
+#   Money.new(100, ""USD"") #=> ""$1.00""
+#   Money.new(100, ""GBP"") #=> ""£1.00""
+#   Money.new(100, ""EUR"") #=> ""€1.00""
+#
+#   # Same thing.
+#   Money.new(100, ""USD"").format(symbol: true) #=> ""$1.00""
+#   Money.new(100, ""GBP"").format(symbol: true) #=> ""£1.00""
+#   Money.new(100, ""EUR"").format(symbol: true) #=> ""€1.00""
+#
+#   # You can specify a false expression or an empty string to disable
+#   # prepending a money symbol.§
+#   Money.new(100, ""USD"").format(symbol: false) #=> ""1.00""
+#   Money.new(100, ""GBP"").format(symbol: nil)   #=> ""1.00""
+#   Money.new(100, ""EUR"").format(symbol: """")    #=> ""1.00""
+#
+#   # If the symbol for the given currency isn't known, then it will default
+#   # to ""¤"" as symbol.
+#   Money.new(100, ""AWG"").format(symbol: true) #=> ""¤1.00""
+#
+#   # You can specify a string as value to enforce using a particular symbol.
+#   Money.new(100, ""AWG"").format(symbol: ""ƒ"") #=> ""ƒ1.00""
+#
+#   # You can specify a indian currency format
+#   Money.new(10000000, ""INR"").format(south_asian_number_formatting: true) #=> ""1,00,000.00""
+#   Money.new(10000000).format(south_asian_number_formatting: true) #=> ""$1,00,000.00""
+#
+# @option rules [Boolean, nil] :symbol_before_without_space (true) Whether
+#   a space between the money symbol and the amount should be inserted when
+#   +:symbol_position+ is +:before+. The default is true (meaning no space). Ignored
+#   if +:symbol+ is false or +:symbol_position+ is not +:before+.
+#
+# @example
+#   # Default is to not insert a space.
+#   Money.new(100, ""USD"").format #=> ""$1.00""
+#
+#   # Same thing.
+#   Money.new(100, ""USD"").format(symbol_before_without_space: true) #=> ""$1.00""
+#
+#   # If set to false, will insert a space.
+#   Money.new(100, ""USD"").format(symbol_before_without_space: false) #=> ""$ 1.00""
+#
+# @option rules [Boolean, nil] :symbol_after_without_space (false) Whether
+#   a space between the amount and the money symbol should be inserted when
+#   +:symbol_position+ is +:after+. The default is false (meaning space). Ignored
+#   if +:symbol+ is false or +:symbol_position+ is not +:after+.
+#
+# @example
+#   # Default is to insert a space.
+#   Money.new(100, ""USD"").format(symbol_position: :after) #=> ""1.00 $""
+#
+#   # If set to true, will not insert a space.
+#   Money.new(100, ""USD"").format(symbol_position: :after, symbol_after_without_space: true) #=> ""1.00$""
+#
+# @option rules [Boolean, String, nil] :decimal_mark (true) Whether the
+#  currency should be separated by the specified character or '.'
+#
+# @example
+#   # If a string is specified, it's value is used.
+#   Money.new(100, ""USD"").format(decimal_mark: "","") #=> ""$1,00""
+#
+#   # If the decimal_mark for a given currency isn't known, then it will default
+#   # to ""."" as decimal_mark.
+#   Money.new(100, ""FOO"").format #=> ""$1.00""
+#
+# @option rules [Boolean, String, nil] :thousands_separator (true) Whether
+#  the currency should be delimited by the specified character or ','
+#
+# @example
+#   # If false is specified, no thousands_separator is used.
+#   Money.new(100000, ""USD"").format(thousands_separator: false) #=> ""1000.00""
+#   Money.new(100000, ""USD"").format(thousands_separator: nil)   #=> ""1000.00""
+#   Money.new(100000, ""USD"").format(thousands_separator: """")    #=> ""1000.00""
+#
+#   # If a string is specified, it's value is used.
+#   Money.new(100000, ""USD"").format(thousands_separator: ""."") #=> ""$1.000.00""
+#
+#   # If the thousands_separator for a given currency isn't known, then it will
+#   # default to "","" as thousands_separator.
+#   Money.new(100000, ""FOO"").format #=> ""$1,000.00""
+#
+# @option rules [Boolean] :html (false) Whether the currency should be
+#  HTML-formatted. Only useful in combination with +:with_currency+.
+#
+# @example
+#   Money.ca_dollar(570).format(html: true, with_currency: true)
+#   #=> ""$5.70 <span class=\""currency\"">CAD</span>""
+#
+# @option rules [Boolean] :html_wrap (false) Whether all currency parts should be HTML-formatted.
+#
+# @example
+#   Money.ca_dollar(570).format(html_wrap: true, with_currency: true)
+#   #=> ""<span class=\""money-currency-symbol\"">$</span><span class=\""money-whole\"">5</span><span class=\""money-decimal-mark\"">.</span><span class=\""money-decimal\"">70</span> <span class=\""money-currency\"">CAD</span>""
+#
+# @option rules [Boolean] :sign_before_symbol (false) Whether the sign should be
+#  before the currency symbol.
+#
+# @example
+#   # You can specify to display the sign before the symbol for negative numbers
+#   Money.new(-100, ""GBP"").format(sign_before_symbol: true)  #=> ""-£1.00""
+#   Money.new(-100, ""GBP"").format(sign_before_symbol: false) #=> ""£-1.00""
+#   Money.new(-100, ""GBP"").format                               #=> ""£-1.00""
+#
+# @option rules [Boolean] :sign_positive (false) Whether positive numbers should be
+#  signed, too.
+#
+# @example
+#   # You can specify to display the sign with positive numbers
+#   Money.new(100, ""GBP"").format(sign_positive: true,  sign_before_symbol: true)  #=> ""+£1.00""
+#   Money.new(100, ""GBP"").format(sign_positive: true,  sign_before_symbol: false) #=> ""£+1.00""
+#   Money.new(100, ""GBP"").format(sign_positive: false, sign_before_symbol: true)  #=> ""£1.00""
+#   Money.new(100, ""GBP"").format(sign_positive: false, sign_before_symbol: false) #=> ""£1.00""
+#   Money.new(100, ""GBP"").format                               #=> ""£+1.00""
+#
+# @option rules [Boolean] :disambiguate (false) Prevents the result from being ambiguous
+#  due to equal symbols for different currencies. Uses the `disambiguate_symbol`.
+#
+# @example
+#   Money.new(10000, ""USD"").format(disambiguate: false)   #=> ""$100.00""
+#   Money.new(10000, ""CAD"").format(disambiguate: false)   #=> ""$100.00""
+#   Money.new(10000, ""USD"").format(disambiguate: true)    #=> ""$100.00""
+#   Money.new(10000, ""CAD"").format(disambiguate: true)    #=> ""C$100.00""
+#
+# @option rules [Boolean] :html_wrap_symbol (false) Wraps the currency symbol
+#  in a html <span> tag.
+#
+# @example
+#   Money.new(10000, ""USD"").format(disambiguate: false)
+#   #=> ""<span class=\""currency_symbol\"">$100.00</span>
+#
+# @option rules [Symbol] :symbol_position (:before) `:before` if the currency
+#   symbol goes before the amount, `:after` if it goes after.
+#
+# @example
+#   Money.new(10000, ""USD"").format(symbol_position: :before) #=> ""$100.00""
+#   Money.new(10000, ""USD"").format(symbol_position: :after)  #=> ""100.00 $""
+#
+# @option rules [Boolean] :translate (true) `true` Checks for custom
+#   symbol definitions using I18n.
+#
+# @example
+#   # With the following entry in the translation files:
+#   # en:
+#   #   number:
+#   #     currency:
+#   #       symbol:
+#   #         CAD: ""CAD$""
+#   Money.new(10000, ""CAD"").format(translate: true) #=> ""CAD$100.00""
+#
+# @option rules [Boolean] :drop_trailing_zeros (false) Ignore trailing zeros after
+#   the decimal mark
+#
+# @example
+#   Money.new(89000, :btc).format(drop_trailing_zeros: true) #=> B⃦0.00089
+#   Money.new(110, :usd).format(drop_trailing_zeros: true)   #=> $1.1
+#
+# @option rules [String] :format (nil) Provide a template for formatting. `%u` will be replaced
+# with the symbol (if present) and `%n` will be replaced with the number.
+#
+# @example
+#   Money.new(10000, ""USD"").format(format: '%u %n') #=> ""$ 100.00""
+#   Money.new(10000, ""USD"").format(format: '<span>%u%n</span>')  #=> ""<span>$100.00</span>""
+#
+# Note that the default rules can be defined through {Money.default_formatting_rules} hash.
+#
+# @see Money.default_formatting_rules Money.default_formatting_rules for more information.
+"
+Money::Formatter,to_s,"","",String,"    def to_s
+      return free_text if show_free_text?
+      result = format_number
+      formatted = append_sign(result)
+      append_currency_symbol(formatted)
+    end
+",""
+Money::Formatter,thousands_separator,"","",String,"    def thousands_separator
+      lookup :thousands_separator
+    end
+",""
+Money::Formatter,decimal_mark,"","",String,"    def decimal_mark
+      lookup :decimal_mark
+    end
+",""
+Money::Formatter,format_number,"","",String,"    def format_number
+      whole_part, decimal_part = extract_whole_and_decimal_parts
+
+      # Format whole and decimal parts separately
+      decimal_part = format_decimal_part(decimal_part)
+      whole_part = format_whole_part(whole_part)
+
+      # Assemble the final formatted amount
+      if rules[:html_wrap]
+        if decimal_part.nil?
+          html_wrap(whole_part, ""whole"")
+        else
+          [
+            html_wrap(whole_part, ""whole""),
+            html_wrap(decimal_mark, ""decimal-mark""),
+            html_wrap(decimal_part, ""decimal"")
+          ].join
+        end
+      else
+        [whole_part, decimal_part].compact.join(decimal_mark)
+      end
+    end
+",""
+Money::Formatter,append_sign,formatted_number,"formatted_number => String
+",String,"    def append_sign(formatted_number)
+      sign = money.negative? ? '-' : ''
+
+      if rules[:sign_positive] == true && money.positive?
+        sign = '+'
+      end
+
+      if rules[:sign_before_symbol] == true
+        sign_before = sign
+        sign = ''
+      end
+
+      symbol_value = symbol_value_from(rules)
+
+      if symbol_value && !symbol_value.empty?
+        if rules[:html_wrap_symbol]
+          symbol_value = ""<span class=\""currency_symbol\"">#{symbol_value}</span>""
+        elsif rules[:html_wrap]
+          symbol_value = html_wrap(symbol_value, ""currency-symbol"")
+        end
+
+        rules[:format]
+          .gsub('%u', [sign_before, symbol_value].join)
+          .gsub('%n', [sign, formatted_number].join)
+      else
+        formatted_number = ""#{sign_before}#{sign}#{formatted_number}""
+      end
+    end
+",""
+Money::Formatter,append_currency_symbol,formatted_number,"formatted_number => String
+",String,"    def append_currency_symbol(formatted_number)
+      if rules[:with_currency]
+        formatted_number << "" ""
+
+        if rules[:html]
+          formatted_number << ""<span class=\""currency\"">#{currency.to_s}</span>""
+        elsif rules[:html_wrap]
+          formatted_number << html_wrap(currency.to_s, ""currency"")
+        else
+          formatted_number << currency.to_s
+        end
+      end
+      formatted_number
+    end
+",""
+Money::Formatter,show_free_text?,"","",(String or false or true),"    def show_free_text?
+      money.zero? && rules[:display_free]
+    end
+",""
+Money::Formatter,html_wrap,"string, class_name","string => String
+class_name => String
+",String,"    def html_wrap(string, class_name)
+      ""<span class=\""money-#{class_name}\"">#{string}</span>""
+    end
+",""
+Money::Formatter,free_text,"","",String,"    def free_text
+      rules[:display_free].respond_to?(:to_str) ? rules[:display_free] : 'free'
+    end
+",""
+Money::Formatter,format_whole_part,value,"value => String
+",String,"    def format_whole_part(value)
+      # Apply thousands_separator
+      value.gsub regexp_format, ""\\1#{thousands_separator}""
+    end
+",""
+Money::Formatter,extract_whole_and_decimal_parts,"","",Array<String>,"    def extract_whole_and_decimal_parts
+      fractional = money.fractional.abs
+
+      # Round the infinite precision part if needed
+      fractional = fractional.round if rules[:rounded_infinite_precision]
+
+      # Translate subunits into units
+      fractional_units = BigDecimal(fractional) / currency.subunit_to_unit
+
+      # Split the result and return whole and decimal parts separately
+      fractional_units.to_s('F').split('.')
+    end
+",""
+Money::Formatter,format_decimal_part,value,"value => String
+",String,"    def format_decimal_part(value)
+      return nil if currency.decimal_places == 0 && !Money.infinite_precision
+      return nil if rules[:no_cents]
+      return nil if rules[:no_cents_if_whole] && value.to_i == 0
+
+      # Pad value, making up for missing zeroes at the end
+      value = value.ljust(currency.decimal_places, '0')
+
+      # Drop trailing zeros if needed
+      value.gsub!(/0*$/, '') if rules[:drop_trailing_zeros]
+
+      value.empty? ? nil : value
+    end
+",""
+Money::Formatter,lookup,key,"key => Symbol
+",String,"    def lookup(key)
+      return rules[key] || DEFAULTS[key] if rules.has_key?(key)
+
+      (Money.locale_backend && Money.locale_backend.lookup(key, currency)) || DEFAULTS[key]
+    end
+",""
+Money::Formatter,regexp_format,"","",Regexp,"    def regexp_format
+      if rules[:south_asian_number_formatting]
+        # from http://blog.revathskumar.com/2014/11/regex-comma-seperated-indian-currency-format.html
+        /(\d+?)(?=(\d\d)+(\d)(?!\d))(\.\d+)?/
+      else
+        /(\d)(?=(?:\d{3})+(?:[^\d]{1}|$))/
+      end
+    end
+",""
+Money::Formatter,symbol_value_from,rules,"rules => Money::FormattingRules
+",String,"    def symbol_value_from(rules)
+      if rules.has_key?(:symbol)
+        if rules[:symbol] === true
+          if rules[:disambiguate] && currency.disambiguate_symbol
+            currency.disambiguate_symbol
+          else
+            money.symbol
+          end
+        elsif rules[:symbol]
+          rules[:symbol]
+        else
+          """"
+        end
+      elsif rules[:html] || rules[:html_wrap]
+        currency.html_entity == '' ? currency.symbol : currency.html_entity
+      elsif rules[:disambiguate] && currency.disambiguate_symbol
+        currency.disambiguate_symbol
+      else
+        money.symbol
+      end
+    end
+",""
+Money::Bank::Base,initialize,block,"block => nil
+",(nil or true),"      def initialize(&block)
+        @rounding_method = block
+        setup
+      end
+","# Initializes a new +Money::Bank::Base+ object. An optional block can be
+# passed to dictate the rounding method that +#exchange_with+ can use.
+#
+# @yield [n] Optional block to use when rounding after exchanging one
+#  currency for another.
+# @yieldparam [Float] n The resulting float after exchanging one currency
+#  for another.
+# @yieldreturn [Integer]
+#
+# @return [Money::Bank::Base]
+#
+# @example
+#   Money::Bank::Base.new #=> #<Money::Bank::Base @rounding_method=nil>
+#   Money::Bank::Base.new {|n|
+#     n.floor
+#   } #=> #<Money::Bank::Base @round_method=#<Proc>>
+"
+Money::Bank::Base,setup,"","",nil,"      def setup
+      end
+","# Called after initialize. Subclasses can use this method to setup
+# variables, etc that they normally would in +#initialize+.
+#
+# @abstract Subclass and override +#setup+ to implement a custom
+#  +Money::Bank+ class.
+#
+# @return [self]
+"
+Money::Bank::Base,same_currency?,"currency1, currency2","currency1 => (Money::Currency or String)
+currency2 => (Money::Currency or String)
+",(false or true),"      def same_currency?(currency1, currency2)
+        Currency.wrap(currency1) == Currency.wrap(currency2)
+      end
+","# Given two currency strings or object, checks whether they're both the
+# same currency. Return +true+ if the currencies are the same, +false+
+# otherwise.
+#
+# @param [Money::Currency, String, Symbol] currency1 The first currency
+#  to compare.
+# @param [Money::Currency, String, Symbol] currency2 The second currency
+#  to compare.
+#
+# @return [Boolean]
+#
+# @example
+#   same_currency?(""usd"", ""USD"")                #=> true
+#   same_currency?(""usd"", ""EUR"")                #=> false
+#   same_currency?(""usd"", Currency.new(""USD""))   #=> true
+#   same_currency?(""usd"", ""USD"")                #=> true
+"
+Money::Bank::VariableExchange,initialize,"st, block","st => Object
+block => nil
+",nil,"      def initialize(st = Money::RatesStore::Memory.new, &block)
+        @store = st
+        super(&block)
+      end
+","# Initializes a new +Money::Bank::VariableExchange+ object.
+# It defaults to using an in-memory, thread safe store instance for
+# storing exchange rates.
+#
+# @param [RateStore] st An exchange rate store, used to persist exchange rate pairs.
+# @yield [n] Optional block to use when rounding after exchanging one
+#  currency for another. See +Money::bank::base+
+"
+Money::Bank::VariableExchange,store,"","",Object,"      def store
+        @store.is_a?(String) ? Object.const_get(@store) : @store
+      end
+",""
+Money::Bank::VariableExchange,marshal_dump,"","","(Array<Array<(Class or Hash<%bot, %bot> or Hash<Symbol, true>)>> or Array<Array<(Class or Hash<%bot, %bot>)>>)","      def marshal_dump
+        [store.marshal_dump, @rounding_method]
+      end
+",""
+Money::Bank::VariableExchange,marshal_load,arr,"arr => (Array<Array<(Hash<%bot, %bot> or Hash<Symbol, true>)>> or Array<Array<Hash<%bot, %bot>>>)
+",nil,"      def marshal_load(arr)
+        store_info = arr[0]
+        @store = store_info.shift.new(*store_info)
+        @rounding_method = arr[1]
+      end
+",""
+Money::Bank::VariableExchange,exchange,"fractional, rate, block","fractional => BigDecimal
+rate => (Float or Integer)
+block => nil
+",(BigDecimal or Integer),"      def exchange(fractional, rate, &block)
+        ex = fractional * BigDecimal(rate.to_s)
+        if block_given?
+          yield ex
+        elsif @rounding_method
+          @rounding_method.call(ex)
+        else
+          ex
+        end
+      end
+",""
+Money::Bank::VariableExchange,add_rate,"from, to, rate","from => String
+to => String
+rate => (Float or Integer)
+",(Float or Integer),"      def add_rate(from, to, rate)
+        set_rate(from, to, rate)
+      end
+","# Registers a conversion rate and returns it (uses +#set_rate+).
+# Delegates to +Money::RatesStore::Memory+
+#
+# @param [Currency, String, Symbol] from Currency to exchange from.
+# @param [Currency, String, Symbol] to Currency to exchange to.
+# @param [Numeric] rate Rate to use when exchanging currencies.
+#
+# @return [Numeric]
+#
+# @example
+#   bank = Money::Bank::VariableExchange.new
+#   bank.add_rate(""USD"", ""CAD"", 1.24515)
+#   bank.add_rate(""CAD"", ""USD"", 0.803115)
+"
+Money::Bank::VariableExchange,set_rate,"from, to, rate, opts","from => String
+to => String
+rate => (Float or Integer)
+opts => Hash<%bot, %bot>
+",(Float or Integer),"      def set_rate(from, to, rate, opts = {})
+        store.add_rate(Currency.wrap(from).iso_code, Currency.wrap(to).iso_code, rate)
+      end
+","# Set the rate for the given currencies.
+# access.
+# Delegates to +Money::RatesStore::Memory+
+#
+# @param [Currency, String, Symbol] from Currency to exchange from.
+# @param [Currency, String, Symbol] to Currency to exchange to.
+# @param [Numeric] rate Rate to use when exchanging currencies.
+# @param [Hash] opts Options hash to set special parameters. Backwards compatibility only.
+#
+# @return [Numeric]
+#
+# @example
+#   bank = Money::Bank::VariableExchange.new
+#   bank.set_rate(""USD"", ""CAD"", 1.24515)
+#   bank.set_rate(""CAD"", ""USD"", 0.803115)
+"
+Money::Bank::VariableExchange,get_rate,"from, to, opts","from => (Money::Currency or String)
+to => (Money::Currency or String)
+opts => Hash<%bot, %bot>
+",(Float or Integer),"      def get_rate(from, to, opts = {})
+        store.get_rate(Currency.wrap(from).iso_code, Currency.wrap(to).iso_code)
+      end
+","# Retrieve the rate for the given currencies.
+# data access.
+# Delegates to +Money::RatesStore::Memory+
+#
+# @param [Currency, String, Symbol] from Currency to exchange from.
+# @param [Currency, String, Symbol] to Currency to exchange to.
+# @param [Hash] opts Options hash to set special parameters. Backwards compatibility only.
+#
+# @return [Numeric]
+#
+# @example
+#   bank = Money::Bank::VariableExchange.new
+#   bank.set_rate(""USD"", ""CAD"", 1.24515)
+#   bank.set_rate(""CAD"", ""USD"", 0.803115)
+#
+#   bank.get_rate(""USD"", ""CAD"") #=> 1.24515
+#   bank.get_rate(""CAD"", ""USD"") #=> 0.803115
+"
+Money::Bank::VariableExchange,export_rates,"format, file, opts","format => Symbol
+file => String
+opts => (Hash<%bot, %bot> or Hash<Symbol, Integer>)
+",String,"      def export_rates(format, file = nil, opts = {})
+        raise Money::Bank::UnknownRateFormat unless
+          RATE_FORMATS.include? format
+
+        store.transaction do
+          s = FORMAT_SERIALIZERS[format].dump(rates)
+
+          unless file.nil?
+            File.open(file, ""w"") {|f| f.write(s) }
+          end
+
+          s
+        end
+      end
+","# Return the known rates as a string in the format specified. If +file+
+# is given will also write the string out to the file specified.
+# Available formats are +:json+, +:ruby+ and +:yaml+.
+#
+# @param [Symbol] format Request format for the resulting string.
+# @param [String] file Optional file location to write the rates to.
+# @param [Hash] opts Options hash to set special parameters. Backwards compatibility only.
+#
+# @return [String]
+#
+# @raise +Money::Bank::UnknownRateFormat+ if format is unknown.
+#
+# @example
+#   bank = Money::Bank::VariableExchange.new
+#   bank.set_rate(""USD"", ""CAD"", 1.24515)
+#   bank.set_rate(""CAD"", ""USD"", 0.803115)
+#
+#   s = bank.export_rates(:json)
+#   s #=> ""{\""USD_TO_CAD\"":1.24515,\""CAD_TO_USD\"":0.803115}""
+"
+Money::Bank::VariableExchange,rates,"","","(Hash<%bot, %bot> or Hash<String, Float>)","      def rates
+        store.each_rate.each_with_object({}) do |(from,to,rate),hash|
+          hash[[from, to].join(SERIALIZER_SEPARATOR)] = rate
+        end
+      end
+","# This should be deprecated.
+"
+Money::Bank::VariableExchange,import_rates,"format, s, opts","format => Symbol
+s => String
+opts => (Hash<%bot, %bot> or Hash<Symbol, Integer>)
+",Money::Bank::VariableExchange,"      def import_rates(format, s, opts = {})
+        raise Money::Bank::UnknownRateFormat unless
+          RATE_FORMATS.include? format
+
+        store.transaction do
+          data = FORMAT_SERIALIZERS[format].load(s)
+
+          data.each do |key, rate|
+            from, to = key.split(SERIALIZER_SEPARATOR)
+            store.add_rate from, to, rate
+          end
+        end
+
+        self
+      end
+","# Loads rates provided in +s+ given the specified format. Available
+# formats are +:json+, +:ruby+ and +:yaml+.
+# Delegates to +Money::RatesStore::Memory+
+#
+# @param [Symbol] format The format of +s+.
+# @param [String] s The rates string.
+# @param [Hash] opts Options hash to set special parameters. Backwards compatibility only.
+#
+# @return [self]
+#
+# @raise +Money::Bank::UnknownRateFormat+ if format is unknown.
+#
+# @example
+#   s = ""{\""USD_TO_CAD\"":1.24515,\""CAD_TO_USD\"":0.803115}""
+#   bank = Money::Bank::VariableExchange.new
+#   bank.import_rates(:json, s)
+#
+#   bank.get_rate(""USD"", ""CAD"") #=> 1.24515
+#   bank.get_rate(""CAD"", ""USD"") #=> 0.803115
+"
+[s]Money::Currency::Loader,load_currencies,"","","(Hash<%bot, %bot> or Hash<Symbol, (Hash<Symbol, (Array<%bot> or Integer or String or false)> or Hash<Symbol, (Array<%bot> or Integer or String or true)> or Hash<Symbol, (Array<String> or Integer or String or false)> or Hash<Symbol, (Array<String> or Integer or String or true)> or Hash<Symbol, (Integer or String or true)>)>)","        def load_currencies
+          currencies = parse_currency_file(""currency_iso.json"")
+          currencies.merge! parse_currency_file(""currency_non_iso.json"")
+          currencies.merge! parse_currency_file(""currency_backwards_compatible.json"")
+        end
+","# Loads and returns the currencies stored in JSON files in the config directory.
+#
+# @return [Hash]
+"
+[s]Money::Currency::Loader,parse_currency_file,filename,"filename => String
+","(Hash<Symbol, (Hash<Symbol, (Array<%bot> or Integer or String or false)> or Hash<Symbol, (Array<%bot> or Integer or String or true)> or Hash<Symbol, (Array<String> or Integer or String or false)> or Hash<Symbol, (Array<String> or Integer or String or true)> or Hash<Symbol, (Integer or String or true)>)> or Hash<Symbol, (Hash<Symbol, (Array<%bot> or Integer or String or false)> or Hash<Symbol, (Array<%bot> or Integer or String or true)> or Hash<Symbol, (Array<String> or Integer or String or true)>)> or Hash<Symbol, (Hash<Symbol, (Array<%bot> or Integer or String or true)> or Hash<Symbol, (Array<String> or Integer or String or false)> or Hash<Symbol, (Array<String> or Integer or String or true)>)>)","        def parse_currency_file(filename)
+          json = File.read(""#{DATA_PATH}/#{filename}"")
+          json.force_encoding(::Encoding::UTF_8) if defined?(::Encoding)
+          JSON.parse(json, symbolize_names: true)
+        end
+",""
+Money::RatesStore::Memory,initialize,"opts, rates","opts => (Hash<%bot, %bot> or Hash<Symbol, true>)
+rates => Hash<%bot, %bot>
+",Monitor,"      def initialize(opts = {}, rates = {})
+        @rates = rates
+        @options = opts
+        @guard = Monitor.new
+      end
+","# Initializes a new +Money::RatesStore::Memory+ object.
+#
+# @param [Hash] opts Optional store options.
+# @option opts [Boolean] :without_mutex disables the usage of a mutex
+# @param [Hash] rt Optional initial exchange rate data.
+"
+Money::RatesStore::Memory,add_rate,"currency_iso_from, currency_iso_to, rate","currency_iso_from => String
+currency_iso_to => String
+rate => (Float or Integer)
+",(Float or Integer),"      def add_rate(currency_iso_from, currency_iso_to, rate)
+        guard.synchronize do
+          rates[rate_key_for(currency_iso_from, currency_iso_to)] = rate
+        end
+      end
+","# Registers a conversion rate and returns it. Uses +Mutex+ to synchronize data access.
+#
+# @param [String] currency_iso_from Currency to exchange from.
+# @param [String] currency_iso_to Currency to exchange to.
+# @param [Numeric] rate Rate to use when exchanging currencies.
+#
+# @return [Numeric]
+#
+# @example
+#   store = Money::RatesStore::Memory.new
+#   store.add_rate(""USD"", ""CAD"", 1.24515)
+#   store.add_rate(""CAD"", ""USD"", 0.803115)
+"
+Money::RatesStore::Memory,get_rate,"currency_iso_from, currency_iso_to","currency_iso_from => String
+currency_iso_to => String
+",(Float or Integer),"      def get_rate(currency_iso_from, currency_iso_to)
+        guard.synchronize do
+          rates[rate_key_for(currency_iso_from, currency_iso_to)]
+        end
+      end
+","# Retrieve the rate for the given currencies. Uses +Mutex+ to synchronize data access.
+# Delegates to +Money::RatesStore::Memory+
+#
+# @param [String] currency_iso_from Currency to exchange from.
+# @param [String] currency_iso_to Currency to exchange to.
+#
+# @return [Numeric]
+#
+# @example
+#   store = Money::RatesStore::Memory.new
+#   store.add_rate(""USD"", ""CAD"", 1.24515)
+#
+#   store.get_rate(""USD"", ""CAD"") #=> 1.24515
+"
+Money::RatesStore::Memory,marshal_dump,"","","(Array<(Class or Hash<%bot, %bot> or Hash<Symbol, true>)> or Array<(Class or Hash<%bot, %bot>)>)","      def marshal_dump
+        guard.synchronize do
+          return [self.class, options, rates.dup]
+        end
+      end
+",""
+Money::RatesStore::Memory,transaction,block,"block => nil
+","(Hash<String, Float> or Integer or String)","      def transaction(&block)
+        guard.synchronize do
+          yield
+        end
+      end
+","# Wraps block execution in a thread-safe transaction
+"
+Money::RatesStore::Memory,each_rate,block,"block => nil
+","(Enumerator or Hash<%bot, %bot> or Hash<String, Float>)","      def each_rate(&block)
+        return to_enum(:each_rate) unless block_given?
+
+        guard.synchronize do
+          rates.each do |key, rate|
+            iso_from, iso_to = key.split(INDEX_KEY_SEPARATOR)
+            yield iso_from, iso_to, rate
+          end
+        end
+      end
+","# Iterate over rate tuples (iso_from, iso_to, rate)
+#
+# @yieldparam iso_from [String] Currency ISO string.
+# @yieldparam iso_to [String] Currency ISO string.
+# @yieldparam rate [Numeric] Exchange rate.
+#
+# @return [Enumerator]
+#
+# @example
+#   store.each_rate do |iso_from, iso_to, rate|
+#     puts [iso_from, iso_to, rate].join
+#   end
+"
+Money::RatesStore::Memory,rate_key_for,"currency_iso_from, currency_iso_to","currency_iso_from => String
+currency_iso_to => String
+",String,"      def rate_key_for(currency_iso_from, currency_iso_to)
+        [currency_iso_from, currency_iso_to].join(INDEX_KEY_SEPARATOR).upcase
+      end
+","# Return the rate hashkey for the given currencies.
+#
+# @param [String] currency_iso_from The currency to exchange from.
+# @param [String] currency_iso_to The currency to exchange to.
+#
+# @return [String]
+#
+# @example
+#   rate_key_for(""USD"", ""CAD"") #=> ""USD_TO_CAD""
+"
+Money::LocaleBackend::Currency,lookup,"key, currency","key => Symbol
+currency => Money::Currency
+",String,"      def lookup(key, currency)
+        currency.public_send(key) if currency.respond_to?(key)
+      end
+",""
+Money::LocaleBackend::I18n,initialize,"","",nil,"      def initialize
+        raise NotSupported, 'I18n not found' unless defined?(::I18n)
+      end
+",""
+Money::LocaleBackend::I18n,lookup,"key, _","key => Symbol
+_ => nil
+",String,"      def lookup(key, _)
+        i18n_key = KEY_MAP[key]
+
+        ::I18n.t i18n_key, scope: 'number.currency.format', raise: true
+      rescue ::I18n::MissingTranslationData
+        ::I18n.t i18n_key, scope: 'number.format', default: nil
+      end
+",""
+Money::LocaleBackend::Legacy,initialize,"","",nil,"      def initialize
+        raise NotSupported, 'I18n not found' if Money.use_i18n && !defined?(::I18n)
+      end
+",""
+Money::LocaleBackend::Legacy,lookup,"key, currency","key => Symbol
+currency => Money::Currency
+",String,"      def lookup(key, currency)
+        warn '[DEPRECATION] You are using the default localization behaviour that will change in the next major release. Find out more - https://github.com/RubyMoney/money#deprecation'
+
+        if Money.use_i18n
+          i18n_backend.lookup(key, nil) || currency.public_send(key)
+        else
+          currency.public_send(key)
+        end
+      end
+",""
+Money::LocaleBackend::Legacy,i18n_backend,"","",Money::LocaleBackend::I18n,"      def i18n_backend
+        @i18n_backend ||= Money::LocaleBackend::I18n.new
+      end
+",""

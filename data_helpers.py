@@ -24,24 +24,44 @@ def clean_str(string):
     string = re.sub(r"\s{2,}", " ", string)
     return string.strip().lower()
 
+def get_label_dict(labels):
+    label2idx=dict()
+    idx2label=dict()
+    idx=0
+    for label in labels:
+        if label not in label2idx:
+            label2idx[label]=idx
+            idx2label[idx]=label
+            idx+=1
+    num_classes = idx
+    return label2idx, idx2label, num_classes
 
-def load_data_and_labels(positive_data_file, negative_data_file):
+def get_one_hot_encoding(num_classes, idx):
+    label_one_hot = np.zeros(num_classes)
+    label_one_hot[idx]=1
+    return label_one_hot
+
+def load_data_and_labels(data_file):
     """
     Loads MR polarity data from files, splits the data into words and generates labels.
     Returns split sentences and labels.
     """
     # Load data from files
-    positive_examples = list(open(positive_data_file, "r").readlines())
-    positive_examples = [s.strip() for s in positive_examples]
-    negative_examples = list(open(negative_data_file, "r").readlines())
-    negative_examples = [s.strip() for s in negative_examples]
+    data = list(open(data_file, "r").readlines())
+    examples = [s.split("\t")[1] for s in data]
+    labels = [s.split("\t")[0] for s in data]
+    # convert labels to indices
+    label2idx,_,num_classes = get_label_dict(labels)
+    labels = [get_one_hot_encoding(num_classes, label2idx[l]) for l in labels]
+    # negative_examples = list(open(negative_data_file, "r").readlines())
+    # negative_examples = [s.strip() for s in negative_examples]
     # Split by words
-    x_text = positive_examples + negative_examples
-    x_text = [clean_str(sent) for sent in x_text]
-    # Generate labels
-    positive_labels = [[0, 1] for _ in positive_examples]
-    negative_labels = [[1, 0] for _ in negative_examples]
-    y = np.concatenate([positive_labels, negative_labels], 0)
+    x_text = examples
+    y = labels
+    # x_text = [clean_str(sent) for sent in x_text]
+    # positive_labels = [[0, 1] for _ in positive_examples]
+    # negative_labels = [[1, 0] for _ in negative_examples]
+    # y = np.concatenate([positive_labels, negative_labels], 0)
     return [x_text, y]
 
 

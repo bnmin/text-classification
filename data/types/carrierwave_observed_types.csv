@@ -1,0 +1,2860 @@
+Class,Method,Parameter Names,Observed Arg Types,Observed Return Type,Source Code,Comments
+CarrierWave::Mount,uploaders,"","","(Hash<%bot, %bot> or Hash<Symbol, Class>)","    def uploaders
+      @uploaders ||= superclass.respond_to?(:uploaders) ? superclass.uploaders.dup : {}
+    end
+","##
+# === Returns
+#
+# [Hash{Symbol => CarrierWave}] what uploaders are mounted on which columns
+#
+"
+CarrierWave::Mount,uploader_options,"","","(Hash<%bot, %bot> or Hash<Symbol, Hash<%bot, %bot>> or Hash<Symbol, Hash<Symbol, Symbol>> or Hash<Symbol, Hash<Symbol, false>>)","    def uploader_options
+      @uploader_options ||= superclass.respond_to?(:uploader_options) ? superclass.uploader_options.dup : {}
+    end
+",""
+CarrierWave::Mount,uploader_option,"column, option","column => Symbol
+option => Symbol
+",(Symbol or false or true),"    def uploader_option(column, option)
+      if uploader_options[column].has_key?(option)
+        uploader_options[column][option]
+      else
+        uploaders[column].send(option)
+      end
+    end
+","##
+# Return a particular option for a particular uploader
+#
+# === Parameters
+#
+# [column (Symbol)] The column the uploader is mounted at
+# [option (Symbol)] The option, e.g. validate_integrity
+#
+# === Returns
+#
+# [Object] The option value
+#
+"
+CarrierWave::Mount,mount_uploader,"column, uploader, options, block","column => Symbol
+uploader => Class
+options => (Hash<%bot, %bot> or Hash<Symbol, Symbol> or Hash<Symbol, false>)
+block => nil
+",Symbol,"    def mount_uploader(column, uploader=nil, options={}, &block)
+      mount_base(column, uploader, options, &block)
+
+      mod = Module.new
+      include mod
+      mod.class_eval <<-RUBY, __FILE__, __LINE__+1
+
+        def #{column}
+          _mounter(:#{column}).uploaders[0] ||= _mounter(:#{column}).blank_uploader
+        end
+
+        def #{column}=(new_file)
+          _mounter(:#{column}).cache([new_file])
+        end
+
+        def #{column}_url(*args)
+          #{column}.url(*args)
+        end
+
+        def #{column}_cache
+          _mounter(:#{column}).cache_names[0]
+        end
+
+        def #{column}_cache=(cache_name)
+          _mounter(:#{column}).cache_names = [cache_name]
+        end
+
+        def remote_#{column}_url
+          [_mounter(:#{column}).remote_urls].flatten[0]
+        end
+
+        def remote_#{column}_url=(url)
+          _mounter(:#{column}).remote_urls = [url]
+        end
+
+        def remote_#{column}_request_header=(header)
+          _mounter(:#{column}).remote_request_headers = [header]
+        end
+
+        def write_#{column}_identifier
+          return if frozen?
+          mounter = _mounter(:#{column})
+
+          mounter.clear! if mounter.remove?
+          write_uploader(mounter.serialization_column, mounter.identifiers.first)
+        end
+
+        def #{column}_identifier
+          _mounter(:#{column}).read_identifiers[0]
+        end
+
+        def #{column}_integrity_error
+          #{column}_integrity_errors.last
+        end
+
+        def #{column}_processing_error
+          #{column}_processing_errors.last
+        end
+
+        def #{column}_download_error
+          #{column}_download_errors.last
+        end
+
+        def store_previous_changes_for_#{column}
+          attribute_changes = ::ActiveRecord.version.to_s.to_f >= 5.1 ? saved_changes : changes
+          @_previous_changes_for_#{column} = attribute_changes[_mounter(:#{column}).serialization_column]
+        end
+
+        def remove_previously_stored_#{column}
+          before, after = @_previous_changes_for_#{column}
+          _mounter(:#{column}).remove_previous([before], [after])
+        end
+      RUBY
+    end
+","##
+# Mounts the given uploader on the given column. This means that assigning
+# and reading from the column will upload and retrieve files. Supposing
+# that a User class has an uploader mounted on image, you can assign and
+# retrieve files like this:
+#
+#     @user.image # => <Uploader>
+#     @user.image.store!(some_file_object)
+#
+#     @user.image.url # => '/some_url.png'
+#
+# It is also possible (but not recommended) to omit the uploader, which
+# will create an anonymous uploader class.
+#
+# Passing a block makes it possible to customize the uploader. This can be
+# convenient for brevity, but if there is any significant logic in the
+# uploader, you should do the right thing and have it in its own file.
+#
+# === Added instance methods
+#
+# Supposing a class has used +mount_uploader+ to mount an uploader on a column
+# named +image+, in that case the following methods will be added to the class:
+#
+# [image]                   Returns an instance of the uploader only if anything has been uploaded
+# [image=]                  Caches the given file
+#
+# [image_url]               Returns the url to the uploaded file
+#
+# [image_cache]             Returns a string that identifies the cache location of the file
+# [image_cache=]            Retrieves the file from the cache based on the given cache name
+#
+# [remote_image_url]        Returns previously cached remote url
+# [remote_image_url=]       Retrieve the file from the remote url
+#
+# [remove_image]            An attribute reader that can be used with a checkbox to mark a file for removal
+# [remove_image=]           An attribute writer that can be used with a checkbox to mark a file for removal
+# [remove_image?]           Whether the file should be removed when store_image! is called.
+#
+# [store_image!]            Stores a file that has been assigned with +image=+
+# [remove_image!]           Removes the uploaded file from the filesystem.
+#
+# [image_integrity_error]   Returns an error object if the last file to be assigned caused an integrity error
+# [image_processing_error]  Returns an error object if the last file to be assigned caused a processing error
+# [image_download_error]    Returns an error object if the last file to be remotely assigned caused a download error
+#
+# [image_identifier]        Reads out the identifier of the file
+#
+# === Parameters
+#
+# [column (Symbol)]                   the attribute to mount this uploader on
+# [uploader (CarrierWave::Uploader)]  the uploader class to mount
+# [options (Hash{Symbol => Object})]  a set of options
+# [&block (Proc)]                     customize anonymous uploaders
+#
+# === Options
+#
+# [:mount_on => Symbol] if the name of the column to be serialized to differs you can override it using this option
+# [:ignore_integrity_errors => Boolean] if set to true, integrity errors will result in caching failing silently
+# [:ignore_processing_errors => Boolean] if set to true, processing errors will result in caching failing silently
+#
+# === Examples
+#
+# Mounting uploaders on different columns.
+#
+#     class Song
+#       mount_uploader :lyrics, LyricsUploader
+#       mount_uploader :alternative_lyrics, LyricsUploader
+#       mount_uploader :file, SongUploader
+#     end
+#
+# This will add an anonymous uploader with only the default settings:
+#
+#     class Data
+#       mount_uploader :csv
+#     end
+#
+# this will add an anonymous uploader overriding the store_dir:
+#
+#     class Product
+#       mount_uploader :blueprint do
+#         def store_dir
+#           'blueprints'
+#         end
+#       end
+#     end
+#
+"
+CarrierWave::Mount,mount_uploaders,"column, uploader, options, block","column => Symbol
+uploader => Class
+options => (Hash<%bot, %bot> or Hash<Symbol, Symbol> or Hash<Symbol, false>)
+block => nil
+",Symbol,"    def mount_uploaders(column, uploader=nil, options={}, &block)
+      mount_base(column, uploader, options, &block)
+
+      mod = Module.new
+      include mod
+      mod.class_eval <<-RUBY, __FILE__, __LINE__+1
+
+        def #{column}
+          _mounter(:#{column}).uploaders
+        end
+
+        def #{column}=(new_files)
+          _mounter(:#{column}).cache(new_files)
+        end
+
+        def #{column}_urls(*args)
+          _mounter(:#{column}).urls(*args)
+        end
+
+        def #{column}_cache
+          names = _mounter(:#{column}).cache_names
+          names.to_json if names.present?
+        end
+
+        def #{column}_cache=(cache_name)
+          _mounter(:#{column}).cache_names = JSON.parse(cache_name) if cache_name.present?
+        end
+
+        def remote_#{column}_urls
+          _mounter(:#{column}).remote_urls
+        end
+
+        def remote_#{column}_urls=(urls)
+          _mounter(:#{column}).remote_urls = urls
+        end
+
+        def remote_#{column}_request_headers=(headers)
+          _mounter(:#{column}).remote_request_headers = headers
+        end
+
+        def write_#{column}_identifier
+          return if frozen?
+          mounter = _mounter(:#{column})
+
+          mounter.clear! if mounter.remove?
+          write_uploader(mounter.serialization_column, mounter.identifiers.presence)
+        end
+
+        def #{column}_identifiers
+          _mounter(:#{column}).read_identifiers
+        end
+
+        def store_previous_changes_for_#{column}
+          attribute_changes = ::ActiveRecord.version.to_s.to_f >= 5.1 ? saved_changes : changes
+          @_previous_changes_for_#{column} = attribute_changes[_mounter(:#{column}).serialization_column]
+        end
+
+        def remove_previously_stored_#{column}
+          _mounter(:#{column}).remove_previous(*@_previous_changes_for_#{column})
+        end
+      RUBY
+    end
+","##
+# Mounts the given uploader on the given array column. This means that
+# assigning and reading from the array column will upload and retrieve
+# multiple files. Supposing that a User class has an uploader mounted on
+# images, and that images can store an array, for example it could be a
+# PostgreSQL JSON column. You can assign and retrieve files like this:
+#
+#     @user.images # => []
+#     @user.images = [some_file_object]
+#     @user.images # => [<Uploader>]
+#
+#     @user.images[0].url # => '/some_url.png'
+#
+# It is also possible (but not recommended) to omit the uploader, which
+# will create an anonymous uploader class.
+#
+# Passing a block makes it possible to customize the uploader. This can be
+# convenient for brevity, but if there is any significant logic in the
+# uploader, you should do the right thing and have it in its own file.
+#
+# === Added instance methods
+#
+# Supposing a class has used +mount_uploaders+ to mount an uploader on a column
+# named +images+, in that case the following methods will be added to the class:
+#
+# [images]                  Returns an array of uploaders for each uploaded file
+# [images=]                 Caches the given files
+#
+# [images_urls]             Returns the urls to the uploaded files
+#
+# [images_cache]            Returns a string that identifies the cache location of the files
+# [images_cache=]           Retrieves the files from the cache based on the given cache name
+#
+# [remote_image_urls]       Returns previously cached remote urls
+# [remote_image_urls=]      Retrieve files from the given remote urls
+#
+# [remove_images]           An attribute reader that can be used with a checkbox to mark the files for removal
+# [remove_images=]          An attribute writer that can be used with a checkbox to mark the files for removal
+# [remove_images?]          Whether the files should be removed when store_image! is called.
+#
+# [store_images!]           Stores all files that have been assigned with +images=+
+# [remove_images!]          Removes the uploaded file from the filesystem.
+#
+# [image_integrity_errors]   Returns error objects of files which failed to pass integrity check
+# [image_processing_errors]  Returns error objects of files which failed to be processed
+# [image_download_errors]    Returns error objects of files which failed to be downloaded
+#
+# [image_identifiers]       Reads out the identifiers of the files
+#
+# === Parameters
+#
+# [column (Symbol)]                   the attribute to mount this uploader on
+# [uploader (CarrierWave::Uploader)]  the uploader class to mount
+# [options (Hash{Symbol => Object})]  a set of options
+# [&block (Proc)]                     customize anonymous uploaders
+#
+# === Options
+#
+# [:mount_on => Symbol] if the name of the column to be serialized to differs you can override it using this option
+# [:ignore_integrity_errors => Boolean] if set to true, integrity errors will result in caching failing silently
+# [:ignore_processing_errors => Boolean] if set to true, processing errors will result in caching failing silently
+#
+# === Examples
+#
+# Mounting uploaders on different columns.
+#
+#     class Song
+#       mount_uploaders :lyrics, LyricsUploader
+#       mount_uploaders :alternative_lyrics, LyricsUploader
+#       mount_uploaders :files, SongUploader
+#     end
+#
+# This will add an anonymous uploader with only the default settings:
+#
+#     class Data
+#       mount_uploaders :csv_files
+#     end
+#
+# this will add an anonymous uploader overriding the store_dir:
+#
+#     class Product
+#       mount_uploaders :blueprints do
+#         def store_dir
+#           'blueprints'
+#         end
+#       end
+#     end
+#
+"
+CarrierWave::Mount,mount_base,"column, uploader, options, block","column => Symbol
+uploader => Class
+options => (Hash<%bot, %bot> or Hash<Symbol, Symbol> or Hash<Symbol, false>)
+block => nil
+",Symbol,"    def mount_base(column, uploader=nil, options={}, &block)
+      include CarrierWave::Mount::Extension
+
+      uploader = build_uploader(uploader, &block)
+      uploaders[column.to_sym] = uploader
+      uploader_options[column.to_sym] = options
+
+      # Make sure to write over accessors directly defined on the class.
+      # Simply super to the included module below.
+      class_eval <<-RUBY, __FILE__, __LINE__+1
+        def #{column}; super; end
+        def #{column}=(new_file); super; end
+      RUBY
+
+      mod = Module.new
+      include mod
+      mod.class_eval <<-RUBY, __FILE__, __LINE__+1
+
+        def #{column}?
+          _mounter(:#{column}).present?
+        end
+
+        def remove_#{column}
+          _mounter(:#{column}).remove
+        end
+
+        def remove_#{column}!
+          _mounter(:#{column}).remove!
+        end
+
+        def remove_#{column}=(value)
+          _mounter(:#{column}).remove = value
+        end
+
+        def remove_#{column}?
+          _mounter(:#{column}).remove?
+        end
+
+        def store_#{column}!
+          _mounter(:#{column}).store!
+        end
+
+        def #{column}_integrity_errors
+          _mounter(:#{column}).integrity_errors
+        end
+
+        def #{column}_processing_errors
+          _mounter(:#{column}).processing_errors
+        end
+
+        def #{column}_download_errors
+          _mounter(:#{column}).download_errors
+        end
+
+        def mark_remove_#{column}_false
+          _mounter(:#{column}).remove = false
+        end
+      RUBY
+    end
+",""
+CarrierWave::Mount,build_uploader,"uploader, block","uploader => Class
+block => nil
+",Class,"    def build_uploader(uploader, &block)
+      return uploader if uploader && !block_given?
+
+      uploader = Class.new(uploader || CarrierWave::Uploader::Base)
+      const_set(""Uploader#{uploader.object_id}"".tr('-', '_'), uploader)
+
+      if block_given?
+        uploader.class_eval(&block)
+        uploader.recursively_apply_block_to_versions(&block)
+      end
+
+      uploader
+    end
+",""
+CarrierWave::Mount::Extension,read_uploader,column,"column => Symbol
+",nil,"      def read_uploader(column); end
+","##
+# overwrite this to read from a serialized attribute
+#
+"
+CarrierWave::Mount::Extension,write_uploader,"column, identifier","column => Symbol
+identifier => nil
+",nil,"      def write_uploader(column, identifier); end
+","##
+# overwrite this to write to a serialized attribute
+#
+"
+CarrierWave::Mount::Extension,_mounter,column,"column => Symbol
+",CarrierWave::Mounter,"      def _mounter(column)
+        # We cannot memoize in frozen objects :(
+        return Mounter.new(self, column) if frozen?
+        @_mounters ||= {}
+        @_mounters[column] ||= Mounter.new(self, column)
+      end
+",""
+[s]CarrierWave::SanitizedFile,sanitize_regexp,"","",Regexp,"      def sanitize_regexp
+        @sanitize_regexp ||= /[^[:word:]\.\-\+]/
+      end
+",""
+CarrierWave::SanitizedFile,original_filename,"","",String,"    def original_filename
+      return @original_filename if @original_filename
+      if @file and @file.respond_to?(:original_filename)
+        @file.original_filename
+      elsif path
+        File.basename(path)
+      end
+    end
+","##
+# Returns the filename as is, without sanitizing it.
+#
+# === Returns
+#
+# [String] the unsanitized filename
+#
+"
+CarrierWave::SanitizedFile,filename,"","",String,"    def filename
+      sanitize(original_filename) if original_filename
+    end
+","##
+# Returns the filename, sanitized to strip out any evil characters.
+#
+# === Returns
+#
+# [String] the sanitized filename
+#
+"
+CarrierWave::SanitizedFile,basename,"","",String,"    def basename
+      split_extension(filename)[0] if filename
+    end
+","##
+# Returns the part of the filename before the extension. So if a file is called 'test.jpeg'
+# this would return 'test'
+#
+# === Returns
+#
+# [String] the first part of the filename
+#
+"
+CarrierWave::SanitizedFile,extension,"","",String,"    def extension
+      split_extension(filename)[1] if filename
+    end
+","##
+# Returns the file extension
+#
+# === Returns
+#
+# [String] the extension
+#
+"
+CarrierWave::SanitizedFile,size,"","",Integer,"    def size
+      if is_path?
+        exists? ? File.size(path) : 0
+      elsif @file.respond_to?(:size)
+        @file.size
+      elsif path
+        exists? ? File.size(path) : 0
+      else
+        0
+      end
+    end
+","##
+# Returns the file's size.
+#
+# === Returns
+#
+# [Integer] the file's size in bytes.
+#
+"
+CarrierWave::SanitizedFile,path,"","",String,"    def path
+      return if @file.blank?
+      if is_path?
+        File.expand_path(@file)
+      elsif @file.respond_to?(:path) && !@file.path.blank?
+        File.expand_path(@file.path)
+      end
+    end
+","##
+# Returns the full path to the file. If the file has no path, it will return nil.
+#
+# === Returns
+#
+# [String, nil] the path where the file is located.
+#
+"
+CarrierWave::SanitizedFile,is_path?,"","",(false or true),"    def is_path?
+      !!((@file.is_a?(String) || @file.is_a?(Pathname)) && !@file.blank?)
+    end
+","##
+# === Returns
+#
+# [Boolean] whether the file is supplied as a pathname or string.
+#
+"
+CarrierWave::SanitizedFile,empty?,"","",(false or true),"    def empty?
+      @file.nil? || self.size.nil? || (self.size.zero? && ! self.exists?)
+    end
+","##
+# === Returns
+#
+# [Boolean] whether the file is valid and has a non-zero size
+#
+"
+CarrierWave::SanitizedFile,exists?,"","",(false or true),"    def exists?
+      self.path.present? && File.exist?(self.path)
+    end
+","##
+# === Returns
+#
+# [Boolean] Whether the file exists
+#
+"
+CarrierWave::SanitizedFile,read,"","",String,"    def read
+      if @content
+        @content
+      elsif is_path?
+        File.open(@file, ""rb"") {|file| file.read}
+      else
+        @file.try(:rewind)
+        @content = @file.read
+        @file.try(:close) unless @file.try(:closed?)
+        @content
+      end
+    end
+","##
+# Returns the contents of the file.
+#
+# === Returns
+#
+# [String] contents of the file
+#
+"
+CarrierWave::SanitizedFile,move_to,"new_path, permissions, directory_permissions, keep_filename","new_path => String
+permissions => Integer
+directory_permissions => Integer
+keep_filename => (false or true)
+",CarrierWave::SanitizedFile,"    def move_to(new_path, permissions=nil, directory_permissions=nil, keep_filename=false)
+      return if self.empty?
+      new_path = File.expand_path(new_path)
+
+      mkdir!(new_path, directory_permissions)
+      move!(new_path)
+      chmod!(new_path, permissions)
+      if keep_filename
+        self.file = {:tempfile => new_path, :filename => original_filename, :content_type => content_type}
+      else
+        self.file = {:tempfile => new_path, :content_type => content_type}
+      end
+      self
+    end
+","##
+# Moves the file to the given path
+#
+# === Parameters
+#
+# [new_path (String)] The path where the file should be moved.
+# [permissions (Integer)] permissions to set on the file in its new location.
+# [directory_permissions (Integer)] permissions to set on created directories.
+#
+"
+CarrierWave::SanitizedFile,move!,new_path,"new_path => String
+",Integer,"    def move!(new_path)
+      if exists?
+        FileUtils.mv(path, new_path) unless File.identical?(new_path, path)
+      else
+        File.open(new_path, ""wb"") { |f| f.write(read) }
+      end
+    end
+","##
+# Helper to move file to new path.
+#
+"
+CarrierWave::SanitizedFile,copy_to,"new_path, permissions, directory_permissions","new_path => String
+permissions => Integer
+directory_permissions => Integer
+",CarrierWave::SanitizedFile,"    def copy_to(new_path, permissions=nil, directory_permissions=nil)
+      return if self.empty?
+      new_path = File.expand_path(new_path)
+
+      mkdir!(new_path, directory_permissions)
+      copy!(new_path)
+      chmod!(new_path, permissions)
+      self.class.new({:tempfile => new_path, :content_type => content_type})
+    end
+","##
+# Creates a copy of this file and moves it to the given path. Returns the copy.
+#
+# === Parameters
+#
+# [new_path (String)] The path where the file should be copied to.
+# [permissions (Integer)] permissions to set on the copy
+# [directory_permissions (Integer)] permissions to set on created directories.
+#
+# === Returns
+#
+# @return [CarrierWave::SanitizedFile] the location where the file will be stored.
+#
+"
+CarrierWave::SanitizedFile,copy!,new_path,"new_path => String
+",Integer,"    def copy!(new_path)
+      if exists?
+        FileUtils.cp(path, new_path) unless new_path == path
+      else
+        File.open(new_path, ""wb"") { |f| f.write(read) }
+      end
+    end
+","##
+# Helper to create copy of file in new path.
+#
+"
+CarrierWave::SanitizedFile,delete,"","",Array<String>,"    def delete
+      FileUtils.rm(self.path) if exists?
+    end
+","##
+# Removes the file from the filesystem.
+#
+"
+CarrierWave::SanitizedFile,to_file,"","",File,"    def to_file
+      return @file if @file.is_a?(File)
+      File.open(path, ""rb"") if exists?
+    end
+","##
+# Returns a File object, or nil if it does not exist.
+#
+# === Returns
+#
+# [File] a File object representing the SanitizedFile
+#
+"
+CarrierWave::SanitizedFile,content_type,"","",String,"    def content_type
+      @content_type ||=
+        existing_content_type ||
+        mime_magic_content_type ||
+        mini_mime_content_type
+    end
+","##
+# Returns the content type of the file.
+#
+# === Returns
+#
+# [String] the content type of the file
+#
+"
+CarrierWave::SanitizedFile,content_type=,type,"type => String
+",String,"    def content_type=(type)
+      @content_type = type
+    end
+","##
+# Sets the content type of the file.
+#
+# === Returns
+#
+# [String] the content type of the file
+#
+"
+CarrierWave::SanitizedFile,sanitize_regexp,"","",Regexp,"    def sanitize_regexp
+      CarrierWave::SanitizedFile.sanitize_regexp
+    end
+","##
+# Used to sanitize the file name. Public to allow overriding for non-latin characters.
+#
+# === Returns
+#
+# [Regexp] the regexp for sanitizing the file name
+#
+"
+CarrierWave::SanitizedFile,mkdir!,"path, directory_permissions","path => String
+directory_permissions => Integer
+",Array<String>,"    def mkdir!(path, directory_permissions)
+      options = {}
+      options[:mode] = directory_permissions if directory_permissions
+      FileUtils.mkdir_p(File.dirname(path), **options) unless File.exist?(File.dirname(path))
+    end
+","# create the directory if it doesn't exist
+"
+CarrierWave::SanitizedFile,chmod!,"path, permissions","path => String
+permissions => Integer
+",Integer,"    def chmod!(path, permissions)
+      File.chmod(permissions, path) if permissions
+    end
+",""
+CarrierWave::SanitizedFile,sanitize,name,"name => String
+",String,"    def sanitize(name)
+      name = name.tr(""\\"", ""/"") # work-around for IE
+      name = File.basename(name)
+      name = name.gsub(sanitize_regexp,""_"")
+      name = ""_#{name}"" if name =~ /\A\.+\z/
+      name = ""unnamed"" if name.size.zero?
+      return name.mb_chars.to_s
+    end
+","# Sanitize the filename, to prevent hacking
+"
+CarrierWave::SanitizedFile,existing_content_type,"","",String,"    def existing_content_type
+      if @file.respond_to?(:content_type) && @file.content_type
+        @file.content_type.to_s.chomp
+      end
+    end
+",""
+CarrierWave::SanitizedFile,mime_magic_content_type,"","",String,"    def mime_magic_content_type
+      if path
+        File.open(path) do |file|
+          MimeMagic.by_magic(file).try(:type) || 'invalid/invalid'
+        end
+      end
+    rescue Errno::ENOENT
+      nil
+    end
+",""
+CarrierWave::SanitizedFile,mini_mime_content_type,"","",String,"    def mini_mime_content_type
+      return unless path
+      mime_type = ::MiniMime.lookup_by_filename(path)
+      @content_type = (mime_type && mime_type.content_type).to_s
+    end
+",""
+CarrierWave::SanitizedFile,split_extension,filename,"filename => String
+",Array<String>,"    def split_extension(filename)
+      # regular expressions to try for identifying extensions
+      extension_matchers = [
+        /\A(.+)\.(tar\.([glx]?z|bz2))\z/, # matches ""something.tar.gz""
+        /\A(.+)\.([^\.]+)\z/ # matches ""something.jpg""
+      ]
+
+      extension_matchers.each do |regexp|
+        if filename =~ regexp
+          return $1, $2
+        end
+      end
+      return filename, """" # In case we weren't able to split the extension
+    end
+",""
+CarrierWave::Mounter,uploader_class,"","",Class,"    def uploader_class
+      record.class.uploaders[column]
+    end
+",""
+CarrierWave::Mounter,identifiers,"","",(Array<String> or Array<nil>),"    def identifiers
+      uploaders.map(&:identifier)
+    end
+",""
+CarrierWave::Mounter,read_identifiers,"","",(Array<%bot> or Array<String>),"    def read_identifiers
+      [record.read_uploader(serialization_column)].flatten.reject(&:blank?)
+    end
+",""
+CarrierWave::Mounter,cache_names,"","",(Array<%bot> or Array<String>),"    def cache_names
+      uploaders.map(&:cache_name).compact
+    end
+",""
+CarrierWave::Mounter,cache_names=,cache_names,"cache_names => (Array<String> or Array<nil>)
+",Array<String>,"    def cache_names=(cache_names)
+      cache_names = cache_names.reject(&:blank?)
+      return if cache_names.blank?
+      clear_unstaged
+      cache_names.each do |cache_name|
+        begin
+          uploader = blank_uploader
+          uploader.retrieve_from_cache!(cache_name)
+          @uploaders << uploader
+        rescue CarrierWave::InvalidParameter
+          # ignore
+        end
+      end
+    end
+",""
+CarrierWave::Mounter,remote_urls=,urls,"urls => (Array<String> or Array<nil> or String)
+",Array<Array<String>>,"    def remote_urls=(urls)
+      return if urls.blank? || urls.all?(&:blank?)
+
+      @remote_urls = urls
+
+      clear_unstaged
+      urls.zip(remote_request_headers || []).each do |url, header|
+        handle_error do
+          uploader = blank_uploader
+          uploader.download!(url, header || {})
+          @uploaders << uploader
+        end
+      end
+    end
+",""
+CarrierWave::Mounter,urls,args,"args => Array<%bot>
+",(Array<%bot> or Array<String>),"    def urls(*args)
+      uploaders.map { |u| u.url(*args) }
+    end
+",""
+CarrierWave::Mounter,blank?,"","",(false or true),"    def blank?
+      uploaders.none?(&:present?)
+    end
+",""
+CarrierWave::Mounter,remove?,"","",(false or true),"    def remove?
+      remove.present? && (remove == true || remove !~ /\A0|false$\z/)
+    end
+",""
+CarrierWave::Mounter,remove!,"","",Array<%bot>,"    def remove!
+      uploaders.reject(&:blank?).each(&:remove!)
+      @uploaders = []
+    end
+",""
+CarrierWave::Mounter,clear!,"","",Array<%bot>,"    def clear!
+      @uploaders = []
+    end
+",""
+CarrierWave::Mounter,serialization_column,"","",Symbol,"    def serialization_column
+      option(:mount_on) || column
+    end
+",""
+CarrierWave::Mounter,option,name,"name => Symbol
+",(Symbol or false or true),"    def option(name)
+      self.uploader_options ||= {}
+      self.uploader_options[name] ||= record.class.uploader_option(column, name)
+    end
+",""
+CarrierWave::Compatibility::Paperclip,store_path,for_file,"for_file => String
+",String,"      def store_path(for_file=filename)
+        path = paperclip_path
+        self.filename = for_file
+        path ||= File.join(*[store_dir, paperclip_style.to_s, for_file].compact)
+        interpolate_paperclip_path(path)
+      end
+",""
+CarrierWave::Compatibility::Paperclip,store_dir,"","",String,"      def store_dir
+        "":rails_root/public/system/:attachment/:id""
+      end
+",""
+CarrierWave::Compatibility::Paperclip,paperclip_default_style,"","",Symbol,"      def paperclip_default_style
+        :original
+      end
+",""
+CarrierWave::Compatibility::Paperclip,paperclip_path,"","",nil,"      def paperclip_path
+      end
+",""
+CarrierWave::Compatibility::Paperclip,paperclip_style,"","",Symbol,"      def paperclip_style
+        version_name || paperclip_default_style
+      end
+",""
+CarrierWave::Compatibility::Paperclip,interpolate_paperclip_path,path,"path => String
+",String,"      def interpolate_paperclip_path(path)
+        mappings.each_pair.inject(path) do |agg, pair|
+          agg.gsub("":#{pair[0]}"") { pair[1].call(self, self.paperclip_style).to_s }
+        end
+      end
+",""
+CarrierWave::Compatibility::Paperclip::ClassMethods,interpolate,"sym, block","sym => Symbol
+block => nil
+",Proc,"        def interpolate(sym, &block)
+          mappings[sym] = block
+        end
+",""
+CarrierWave::Downloader::Base,download,"url, remote_headers","url => String
+remote_headers => (Hash<%bot, %bot> or Hash<String, String>)
+",CarrierWave::Downloader::RemoteFile,"      def download(url, remote_headers = {})
+        headers = remote_headers.
+          reverse_merge('User-Agent' => ""CarrierWave/#{CarrierWave::VERSION}"")
+        begin
+          file = OpenURI.open_uri(process_uri(url.to_s), headers)
+        rescue StandardError => e
+          raise CarrierWave::DownloadError, ""could not download file: #{e.message}""
+        end
+        CarrierWave::Downloader::RemoteFile.new(file)
+      end
+","##
+# Downloads a file from given URL and returns a RemoteFile.
+#
+# === Parameters
+#
+# [url (String)] The URL where the remote file is stored
+# [remote_headers (Hash)] Request headers
+#
+"
+CarrierWave::Downloader::Base,process_uri,uri,"uri => String
+",URI::Generic,"      def process_uri(uri)
+        uri_parts = uri.split('?')
+        encoded_uri = Addressable::URI.parse(uri_parts.shift).normalize.to_s
+        encoded_uri << '?' << Addressable::URI.encode(uri_parts.join('?')).gsub('%5B', '[').gsub('%5D', ']') if uri_parts.any?
+        URI.parse(encoded_uri)
+      rescue URI::InvalidURIError, Addressable::URI::InvalidURIError
+        raise CarrierWave::DownloadError, ""couldn't parse URL: #{uri}""
+      end
+","##
+# Processes the given URL by parsing and escaping it. Public to allow overriding.
+#
+# === Parameters
+#
+# [url (String)] The URL where the remote file is stored
+#
+"
+CarrierWave::Downloader::RemoteFile,initialize,file,"file => (File or StringIO or Tempfile)
+",(File or StringIO or Tempfile),"      def initialize(file)
+        @file = file.is_a?(String) ? StringIO.new(file) : file
+      end
+",""
+CarrierWave::Downloader::RemoteFile,original_filename,"","",String,"      def original_filename
+        filename = filename_from_header || filename_from_uri
+        mime_type = MiniMime.lookup_by_content_type(file.content_type)
+        unless File.extname(filename).present? || mime_type.blank?
+          filename = ""#{filename}.#{mime_type.extension}""
+        end
+        filename
+      end
+",""
+CarrierWave::Downloader::RemoteFile,respond_to?,args,"args => Array<RDL::Type::NominalType>
+",(false or true),"      def respond_to?(*args)
+        super || file.respond_to?(*args)
+      end
+",""
+CarrierWave::Downloader::RemoteFile,filename_from_header,"","",String,"      def filename_from_header
+        return nil unless file.meta.include? 'content-disposition'
+
+        match = file.meta['content-disposition'].match(/filename=(?:""([^""]+)""|([^"";]+))/)
+        return nil unless match
+
+        match[1].presence || match[2].presence
+      end
+",""
+CarrierWave::Downloader::RemoteFile,filename_from_uri,"","",String,"      def filename_from_uri
+        CGI.unescape(File.basename(file.base_uri.path))
+      end
+",""
+CarrierWave::Downloader::RemoteFile,method_missing,"args, block","args => Array<RDL::Type::NominalType>
+block => nil
+",(File or Integer or String or URI::HTTP or false),"      def method_missing(*args, &block)
+        file.send(*args, &block)
+      end
+",""
+CarrierWave::ActiveRecord,mount_uploader,"column, uploader, options, block","column => Symbol
+uploader => Class
+options => (Hash<%bot, %bot> or Hash<Symbol, Symbol>)
+block => nil
+",Symbol,"    def mount_uploader(column, uploader=nil, options={}, &block)
+      super
+
+      mod = Module.new
+      prepend mod
+      mod.class_eval <<-RUBY, __FILE__, __LINE__+1
+        def remote_#{column}_url=(url)
+          column = _mounter(:#{column}).serialization_column
+          __send__(:""\#{column}_will_change!"")
+          super
+        end
+      RUBY
+    end
+","##
+# See +CarrierWave::Mount#mount_uploader+ for documentation
+#
+"
+CarrierWave::ActiveRecord,mount_uploaders,"column, uploader, options, block","column => Symbol
+uploader => Class
+options => (Hash<%bot, %bot> or Hash<Symbol, Symbol>)
+block => nil
+",Symbol,"    def mount_uploaders(column, uploader=nil, options={}, &block)
+      super
+
+      mod = Module.new
+      prepend mod
+      mod.class_eval <<-RUBY, __FILE__, __LINE__+1
+        def remote_#{column}_urls=(url)
+          column = _mounter(:#{column}).serialization_column
+          __send__(:""\#{column}_will_change!"")
+          super
+        end
+      RUBY
+    end
+","##
+# See +CarrierWave::Mount#mount_uploaders+ for documentation
+#
+"
+CarrierWave::ActiveRecord,mount_base,"column, uploader, options, block","column => Symbol
+uploader => Class
+options => (Hash<%bot, %bot> or Hash<Symbol, Symbol>)
+block => nil
+",Symbol,"    def mount_base(column, uploader=nil, options={}, &block)
+      super
+
+      alias_method :read_uploader, :read_attribute
+      alias_method :write_uploader, :write_attribute
+      public :read_uploader
+      public :write_uploader
+
+      include CarrierWave::Validations::ActiveModel
+
+      validates_integrity_of column if uploader_option(column.to_sym, :validate_integrity)
+      validates_processing_of column if uploader_option(column.to_sym, :validate_processing)
+      validates_download_of column if uploader_option(column.to_sym, :validate_download)
+
+      before_save :""write_#{column}_identifier""
+      after_save :""store_previous_changes_for_#{column}""
+      after_commit :""remove_#{column}!"", :on => :destroy
+      after_commit :""mark_remove_#{column}_false"", :on => :update
+      after_commit :""remove_previously_stored_#{column}"", :on => :update
+      after_commit :""store_#{column}!"", :on => [:create, :update]
+
+      mod = Module.new
+      prepend mod
+      mod.class_eval <<-RUBY, __FILE__, __LINE__+1
+        def #{column}=(new_file)
+          column = _mounter(:#{column}).serialization_column
+          if !(new_file.blank? && __send__(:#{column}).blank?)
+            __send__(:""\#{column}_will_change!"")
+          end
+
+          super
+        end
+
+        def remove_#{column}=(value)
+          column = _mounter(:#{column}).serialization_column
+          result = super
+          __send__(:""\#{column}_will_change!"") if _mounter(:#{column}).remove?
+          result
+        end
+
+        def remove_#{column}!
+          self.remove_#{column} = true
+          write_#{column}_identifier
+          self.remove_#{column} = false
+          super
+        end
+
+        # Reset cached mounter on record reload
+        def reload(*)
+          @_mounters = nil
+          super
+        end
+
+        # Reset cached mounter on record dup
+        def initialize_dup(other)
+          @_mounters = nil
+          super
+        end
+      RUBY
+    end
+",""
+CarrierWave::RMagick,width,"","",Integer,"    def width
+      rmagick_image.columns
+    end
+","##
+# Returns the width of the image.
+#
+# === Returns
+#
+# [Integer] the image's width in pixels
+#
+"
+CarrierWave::RMagick,height,"","",Integer,"    def height
+      rmagick_image.rows
+    end
+","##
+# Returns the height of the image.
+#
+# === Returns
+#
+# [Integer] the image's height in pixels
+#
+"
+CarrierWave::RMagick,manipulate!,"options, block","options => Hash<%bot, %bot>
+block => nil
+",Magick::Image,"    def manipulate!(options={}, &block)
+      cache_stored_file! if !cached?
+
+      read_block = create_info_block(options[:read])
+      image = ::Magick::Image.read(current_path, &read_block)
+      frames = ::Magick::ImageList.new
+
+      image.each_with_index do |frame, index|
+        frame = yield(*[frame, index, options].take(block.arity)) if block_given?
+        frames << frame if frame
+      end
+      frames.append(true) if block_given?
+
+      write_block = create_info_block(options[:write])
+
+      if options[:format] || @format
+        frames.write(""#{options[:format] || @format}:#{current_path}"", &write_block)
+        move_to = current_path.chomp(File.extname(current_path)) + "".#{options[:format] || @format}""
+        file.content_type = ::MiniMime.lookup_by_filename(move_to).content_type
+        file.move_to(move_to, permissions, directory_permissions)
+      else
+        frames.write(current_path, &write_block)
+      end
+
+      destroy_image(frames)
+    rescue ::Magick::ImageMagickError => e
+      raise CarrierWave::ProcessingError, I18n.translate(:""errors.messages.rmagick_processing_error"", :e => e)
+    end
+","##
+# Manipulate the image with RMagick. This method will load up an image
+# and then pass each of its frames to the supplied block. It will then
+# save the image to disk.
+#
+# === Gotcha
+#
+# This method assumes that the object responds to +current_path+.
+# Any class that this module is mixed into must have a +current_path+ method.
+# CarrierWave::Uploader does, so you won't need to worry about this in
+# most cases.
+#
+# === Yields
+#
+# [Magick::Image] manipulations to perform
+# [Integer] Frame index if the image contains multiple frames
+# [Hash] options, see below
+#
+# === Options
+#
+# The options argument to this method is also yielded as the third
+# block argument.
+#
+# Currently, the following options are defined:
+#
+# ==== :write
+# A hash of assignments to be evaluated in the block given to the RMagick write call.
+#
+# An example:
+#
+#      manipulate! do |img, index, options|
+#        options[:write] = {
+#          :quality => 50,
+#          :depth => 8
+#        }
+#        img
+#      end
+#
+# This will translate to the following RMagick::Image#write call:
+#
+#     image.write do |img|
+#       self.quality = 50
+#       self.depth = 8
+#     end
+#
+# ==== :read
+# A hash of assignments to be given to the RMagick read call.
+#
+# The options available are identical to those for write, but are passed in directly, like this:
+#
+#     manipulate! :read => { :density => 300 }
+#
+# ==== :format
+# Specify the output format. If unset, the filename extension is used to determine the format.
+#
+# === Raises
+#
+# [CarrierWave::ProcessingError] if manipulation failed.
+#
+"
+CarrierWave::RMagick,create_info_block,options,"options => nil
+",nil,"    def create_info_block(options)
+      return nil unless options
+      assignments = options.map { |k, v| ""self.#{k} = #{v}"" }
+      code = ""lambda { |img| "" + assignments.join("";"") + ""}""
+      eval code
+    end
+",""
+CarrierWave::RMagick,destroy_image,image,"image => Magick::ImageList
+",Magick::Image,"    def destroy_image(image)
+      image.try(:destroy!)
+    end
+",""
+CarrierWave::RMagick,rmagick_image,"","",Magick::Image,"    def rmagick_image
+      ::Magick::Image.from_blob(self.read).first
+    end
+",""
+CarrierWave::MiniMagick,width,"","",Integer,"    def width
+      mini_magick_image[:width]
+    end
+","##
+# Returns the width of the image in pixels.
+#
+# === Returns
+#
+# [Integer] the image's width in pixels
+#
+"
+CarrierWave::MiniMagick,height,"","",Integer,"    def height
+      mini_magick_image[:height]
+    end
+","##
+# Returns the height of the image in pixels.
+#
+# === Returns
+#
+# [Integer] the image's height in pixels
+#
+"
+CarrierWave::MiniMagick,mini_magick_image,"","",MiniMagick::Image,"      def mini_magick_image
+        ::MiniMagick::Image.read(read)
+      end
+",""
+CarrierWave::Storage::File,initialize,"","",nil,"      def initialize(*)
+        super
+        @cache_called = nil
+      end
+",""
+CarrierWave::Storage::File,store!,file,"file => CarrierWave::SanitizedFile
+",CarrierWave::SanitizedFile,"      def store!(file)
+        path = ::File.expand_path(uploader.store_path, uploader.root)
+        if uploader.move_to_store
+          file.move_to(path, uploader.permissions, uploader.directory_permissions)
+        else
+          file.copy_to(path, uploader.permissions, uploader.directory_permissions)
+        end
+      end
+","##
+# Move the file to the uploader's store path.
+#
+# By default, store!() uses copy_to(), which operates by copying the file
+# from the cache to the store, then deleting the file from the cache.
+# If move_to_store() is overriden to return true, then store!() uses move_to(),
+# which simply moves the file from cache to store.  Useful for large files.
+#
+# === Parameters
+#
+# [file (CarrierWave::SanitizedFile)] the file to store
+#
+# === Returns
+#
+# [CarrierWave::SanitizedFile] a sanitized file
+#
+"
+CarrierWave::Storage::File,retrieve!,identifier,"identifier => String
+",CarrierWave::SanitizedFile,"      def retrieve!(identifier)
+        path = ::File.expand_path(uploader.store_path(identifier), uploader.root)
+        CarrierWave::SanitizedFile.new(path)
+      end
+","##
+# Retrieve the file from its store path
+#
+# === Parameters
+#
+# [identifier (String)] the filename of the file
+#
+# === Returns
+#
+# [CarrierWave::SanitizedFile] a sanitized file
+#
+"
+CarrierWave::Storage::File,cache!,new_file,"new_file => (CarrierWave::SanitizedFile or RSpec::Mocks::Double)
+",(CarrierWave::SanitizedFile or RSpec::Mocks::Double),"      def cache!(new_file)
+        new_file.move_to(::File.expand_path(uploader.cache_path, uploader.root), uploader.permissions, uploader.directory_permissions, true)
+      rescue Errno::EMLINK, Errno::ENOSPC => e
+        raise(e) if @cache_called
+        @cache_called = true
+
+        # NOTE: Remove cached files older than 10 minutes
+        clean_cache!(600)
+
+        cache!(new_file)
+      end
+","##
+# Stores given file to cache directory.
+#
+# === Parameters
+#
+# [new_file (File, IOString, Tempfile)] any kind of file object
+#
+# === Returns
+#
+# [CarrierWave::SanitizedFile] a sanitized file
+#
+"
+CarrierWave::Storage::File,retrieve_from_cache!,identifier,"identifier => String
+",CarrierWave::SanitizedFile,"      def retrieve_from_cache!(identifier)
+        CarrierWave::SanitizedFile.new(::File.expand_path(uploader.cache_path(identifier), uploader.root))
+      end
+","##
+# Retrieves the file with the given cache_name from the cache.
+#
+# === Parameters
+#
+# [cache_name (String)] uniquely identifies a cache file
+#
+# === Raises
+#
+# [CarrierWave::InvalidParameter] if the cache_name is incorrectly formatted.
+#
+"
+CarrierWave::Storage::File,delete_dir!,path,"path => String
+",Integer,"      def delete_dir!(path)
+        if path
+          begin
+            Dir.rmdir(::File.expand_path(path, uploader.root))
+          rescue Errno::ENOENT
+            # Ignore: path does not exist
+          rescue Errno::ENOTDIR
+            # Ignore: path is not a dir
+          rescue Errno::ENOTEMPTY, Errno::EEXIST
+            # Ignore: dir is not empty
+          end
+        end
+      end
+","##
+# Deletes a cache dir
+#
+"
+CarrierWave::Storage::File,clean_cache!,seconds,"seconds => (ActiveSupport::Duration or Integer)
+",Array<String>,"      def clean_cache!(seconds)
+        Dir.glob(::File.expand_path(::File.join(uploader.cache_dir, '*'), CarrierWave.root)).each do |dir|
+          # generate_cache_id returns key formated TIMEINT-PID(-COUNTER)-RND
+          time = dir.scan(/(\d+)-\d+-\d+(?:-\d+)?/).first.map(&:to_i)
+          time = Time.at(*time)
+          if time < (Time.now.utc - seconds)
+            FileUtils.rm_rf(dir)
+          end
+        end
+      end
+",""
+[s]CarrierWave::Storage::Fog,connection_cache,"","","(Hash<%bot, %bot> or Hash<Hash<Symbol, String>, (Fog::AWS::Storage::Mock or Fog::Storage::GoogleXML::Mock)> or Hash<Hash<Symbol, String>, Fog::AWS::Storage::Mock>)","        def connection_cache
+          @connection_cache ||= {}
+        end
+",""
+[s]CarrierWave::Storage::Fog,eager_load,"","",Fog::AWS::Storage::Mock,"        def eager_load
+          # see #1198. This will hopefully no longer be necessary in future release of fog
+          fog_credentials = CarrierWave::Uploader::Base.fog_credentials
+          if fog_credentials.present?
+            CarrierWave::Storage::Fog.connection_cache[fog_credentials] ||= ::Fog::Storage.new(fog_credentials)
+          end
+        end
+",""
+CarrierWave::Storage::Fog,store!,file,"file => (CarrierWave::SanitizedFile or CarrierWave::Storage::Fog::File)
+",CarrierWave::Storage::Fog::File,"      def store!(file)
+        f = CarrierWave::Storage::Fog::File.new(uploader, self, uploader.store_path)
+        f.store(file)
+        f
+      end
+","##
+# Store a file
+#
+# === Parameters
+#
+# [file (CarrierWave::SanitizedFile)] the file to store
+#
+# === Returns
+#
+# [CarrierWave::Storage::Fog::File] the stored file
+#
+"
+CarrierWave::Storage::Fog,retrieve!,identifier,"identifier => String
+",CarrierWave::Storage::Fog::File,"      def retrieve!(identifier)
+        CarrierWave::Storage::Fog::File.new(uploader, self, uploader.store_path(identifier))
+      end
+","##
+# Retrieve a file
+#
+# === Parameters
+#
+# [identifier (String)] unique identifier for file
+#
+# === Returns
+#
+# [CarrierWave::Storage::Fog::File] the stored file
+#
+"
+CarrierWave::Storage::Fog,cache!,new_file,"new_file => (CarrierWave::SanitizedFile or CarrierWave::Storage::Fog::File)
+",CarrierWave::Storage::Fog::File,"      def cache!(new_file)
+        f = CarrierWave::Storage::Fog::File.new(uploader, self, uploader.cache_path)
+        f.store(new_file)
+        f
+      end
+","##
+# Stores given file to cache directory.
+#
+# === Parameters
+#
+# [new_file (File, IOString, Tempfile)] any kind of file object
+#
+# === Returns
+#
+# [CarrierWave::SanitizedFile] a sanitized file
+#
+"
+CarrierWave::Storage::Fog,retrieve_from_cache!,identifier,"identifier => String
+",CarrierWave::Storage::Fog::File,"      def retrieve_from_cache!(identifier)
+        CarrierWave::Storage::Fog::File.new(uploader, self, uploader.cache_path(identifier))
+      end
+","##
+# Retrieves the file with the given cache_name from the cache.
+#
+# === Parameters
+#
+# [cache_name (String)] uniquely identifies a cache file
+#
+# === Raises
+#
+# [CarrierWave::InvalidParameter] if the cache_name is incorrectly formatted.
+#
+"
+CarrierWave::Storage::Fog,delete_dir!,path,"path => String
+",nil,"      def delete_dir!(path)
+        # do nothing, because there's no such things as 'empty directory'
+      end
+","##
+# Deletes a cache dir
+#
+"
+CarrierWave::Storage::Fog,clean_cache!,seconds,"seconds => (ActiveSupport::Duration or Integer)
+",(Array<%bot> or Array<Fog::AWS::Storage::File> or Array<Fog::Storage::GoogleXML::File>),"      def clean_cache!(seconds)
+        connection.directories.new(
+          :key    => uploader.fog_directory,
+          :public => uploader.fog_public
+        ).files.all(:prefix => uploader.cache_dir).each do |file|
+          # generate_cache_id returns key formated TIMEINT-PID(-COUNTER)-RND
+          time = file.key.scan(/(\d+)-\d+-\d+(?:-\d+)?/).first.map { |t| t.to_i }
+          time = Time.at(*time)
+          file.destroy if time < (Time.now.utc - seconds)
+        end
+      end
+",""
+CarrierWave::Storage::Fog,connection,"","",(Fog::AWS::Storage::Mock or Fog::Storage::GoogleXML::Mock),"      def connection
+        @connection ||= begin
+          options = credentials = uploader.fog_credentials
+          self.class.connection_cache[credentials] ||= ::Fog::Storage.new(options)
+        end
+      end
+",""
+CarrierWave::Storage::Fog::File,authenticated_url,options,"options => (Hash<%bot, %bot> or Hash<Symbol, Hash<String, (Integer or String)>> or Hash<Symbol, Hash<String, String>> or Hash<Symbol, Time>)
+",String,"        def authenticated_url(options = {})
+          if ['AWS', 'Google', 'Rackspace', 'OpenStack', 'AzureRM', 'Aliyun'].include?(@uploader.fog_credentials[:provider])
+            # avoid a get by using local references
+            local_directory = connection.directories.new(:key => @uploader.fog_directory)
+            local_file = local_directory.files.new(:key => path)
+            expire_at = options[:expire_at] || ::Fog::Time.now + @uploader.fog_authenticated_url_expiration
+            case @uploader.fog_credentials[:provider]
+              when 'AWS', 'Google'
+                # Older versions of fog-google do not support options as a parameter
+                if url_options_supported?(local_file)
+                  local_file.url(expire_at, options)
+                else
+                  warn ""Options hash not supported in #{local_file.class}. You may need to upgrade your Fog provider.""
+                  local_file.url(expire_at)
+                end
+              when 'Rackspace', 'OpenStack'
+                connection.get_object_https_url(@uploader.fog_directory, path, expire_at, options)
+              when 'Aliyun'
+                expire_at = expire_at - Time.now
+                local_file.url(expire_at)
+              else
+                local_file.url(expire_at)
+            end
+          end
+        end
+","##
+# Return a temporary authenticated url to a private file, if available
+# Only supported for AWS, Rackspace, Google, AzureRM and Aliyun providers
+#
+# === Returns
+#
+# [String] temporary authenticated url
+#   or
+# [NilClass] no authenticated url available
+#
+"
+CarrierWave::Storage::Fog::File,content_type,"","",String,"        def content_type
+          @content_type || file.try(:content_type)
+        end
+","##
+# Lookup value for file content-type header
+#
+# === Returns
+#
+# [String] value of content-type
+#
+"
+CarrierWave::Storage::Fog::File,delete,"","",true,"        def delete
+          # avoid a get by just using local reference
+          directory.files.new(:key => path).destroy.tap do |result|
+            @file = nil if result
+          end
+        end
+","##
+# Remove the file from service
+#
+# === Returns
+#
+# [Boolean] true for success or raises error
+#
+"
+CarrierWave::Storage::Fog::File,extension,"","",String,"        def extension
+          path_elements = path.split('.')
+          path_elements.last if path_elements.size > 1
+        end
+","##
+# Return extension of file
+#
+# === Returns
+#
+# [String] extension of file or nil if the file has no extension
+#
+"
+CarrierWave::Storage::Fog::File,initialize,"uploader, base, path","uploader => (Class or FogSpecAWSUploader or FogSpecGoogleUploader)
+base => CarrierWave::Storage::Fog
+path => String
+",(Array<(CarrierWave::Storage::Fog or Class or String)> or Array<(CarrierWave::Storage::Fog or FogSpecAWSUploader or String)> or Array<(CarrierWave::Storage::Fog or FogSpecGoogleUploader or String)> or Array<nil>),"        def initialize(uploader, base, path)
+          @uploader, @base, @path, @content_type = uploader, base, path, nil
+        end
+",""
+CarrierWave::Storage::Fog::File,read,"","",String,"        def read
+          file_body = file.body
+
+          return if file_body.nil?
+          return file_body unless file_body.is_a?(::File)
+
+          # Fog::Storage::XXX::File#body could return the source file which was upoloaded to the remote server.
+          read_source_file(file_body) if ::File.exist?(file_body.path)
+
+          # If the source file doesn't exist, the remote content is read
+          @file = nil # rubocop:disable Gitlab/ModuleWithInstanceVariables
+          file.body
+        end
+","##
+# Read content of file from service
+#
+# === Returns
+#
+# [String] contents of file
+"
+CarrierWave::Storage::Fog::File,size,"","",Integer,"        def size
+          file.nil? ? 0 : file.content_length
+        end
+","##
+# Return size of file body
+#
+# === Returns
+#
+# [Integer] size of file body
+#
+"
+CarrierWave::Storage::Fog::File,exists?,"","",false,"        def exists?
+          !!file
+        end
+","##
+# Check if the file exists on the remote service
+#
+# === Returns
+#
+# [Boolean] true if file exists or false
+"
+CarrierWave::Storage::Fog::File,store,new_file,"new_file => (CarrierWave::SanitizedFile or CarrierWave::Storage::Fog::File)
+",true,"        def store(new_file)
+          if new_file.is_a?(self.class)
+            new_file.copy_to(path)
+          else
+            fog_file = new_file.to_file
+            @content_type ||= new_file.content_type
+            @file = directory.files.create({
+              :body         => fog_file ? fog_file : new_file.read,
+              :content_type => @content_type,
+              :key          => path,
+              :public       => @uploader.fog_public
+            }.merge(@uploader.fog_attributes))
+            fog_file.close if fog_file && !fog_file.closed?
+          end
+          true
+        end
+","##
+# Write file to service
+#
+# === Returns
+#
+# [Boolean] true on success or raises error
+"
+CarrierWave::Storage::Fog::File,public_url,"","",String,"        def public_url
+          encoded_path = encode_path(path)
+          if host = @uploader.asset_host
+            if host.respond_to? :call
+              ""#{host.call(self)}/#{encoded_path}""
+            else
+              ""#{host}/#{encoded_path}""
+            end
+          else
+            # AWS/Google optimized for speed over correctness
+            case fog_provider
+            when 'AWS'
+              # check if some endpoint is set in fog_credentials
+              if @uploader.fog_credentials.has_key?(:endpoint)
+                ""#{@uploader.fog_credentials[:endpoint]}/#{@uploader.fog_directory}/#{encoded_path}""
+              else
+                protocol = @uploader.fog_use_ssl_for_aws ? ""https"" : ""http""
+
+                subdomain_regex = /^(?:[a-z]|\d(?!\d{0,2}(?:\d{1,3}){3}$))(?:[a-z0-9\.]|(?![\-])|\-(?![\.])){1,61}[a-z0-9]$/
+                valid_subdomain = @uploader.fog_directory.to_s =~ subdomain_regex && !(protocol == 'https' && @uploader.fog_directory =~ /\./)
+
+                # if directory is a valid subdomain, use that style for access
+                if valid_subdomain
+                  s3_subdomain = @uploader.fog_aws_accelerate ? ""s3-accelerate"" : ""s3""
+                  ""#{protocol}://#{@uploader.fog_directory}.#{s3_subdomain}.amazonaws.com/#{encoded_path}""
+                else # directory is not a valid subdomain, so use path style for access
+                  region = @uploader.fog_credentials[:region].to_s
+                  host   = case region
+                           when DEFAULT_S3_REGION, ''
+                             's3.amazonaws.com'
+                           else
+                             ""s3.#{region}.amazonaws.com""
+                           end
+                  ""#{protocol}://#{host}/#{@uploader.fog_directory}/#{encoded_path}""
+                end
+              end
+            when 'Google'
+              # https://cloud.google.com/storage/docs/access-public-data
+              ""https://storage.googleapis.com/#{@uploader.fog_directory}/#{encoded_path}""
+            else
+              # avoid a get by just using local reference
+              directory.files.new(:key => path).public_url
+            end
+          end
+        end
+","##
+# Return a url to a public file, if available
+#
+# === Returns
+#
+# [String] public url
+#   or
+# [NilClass] no public url available
+#
+"
+CarrierWave::Storage::Fog::File,url,options,"options => (Hash<%bot, %bot> or Hash<Symbol, Hash<String, (Integer or String)>> or Hash<Symbol, Hash<String, String>>)
+",String,"        def url(options = {})
+          if !@uploader.fog_public
+            authenticated_url(options)
+          else
+            public_url
+          end
+        end
+","##
+# Return url to file, if avaliable
+#
+# === Returns
+#
+# [String] url
+#   or
+# [NilClass] no url available
+#
+"
+CarrierWave::Storage::Fog::File,filename,options,"options => Hash<%bot, %bot>
+",String,"        def filename(options = {})
+          return unless file_url = url(options)
+          CGI.unescape(file_url.split('?').first).gsub(/.*\/(.*?$)/, '\1')
+        end
+","##
+# Return file name, if available
+#
+# === Returns
+#
+# [String] file name
+#   or
+# [NilClass] no file name available
+#
+"
+CarrierWave::Storage::Fog::File,copy_to,new_path,"new_path => String
+",CarrierWave::Storage::Fog::File,"        def copy_to(new_path)
+          connection.copy_object(@uploader.fog_directory, file.key, @uploader.fog_directory, new_path, acl_header)
+          CarrierWave::Storage::Fog::File.new(@uploader, @base, new_path)
+        end
+","##
+# Creates a copy of this file and returns it.
+#
+# === Parameters
+#
+# [new_path (String)] The path where the file should be copied to.
+#
+# === Returns
+#
+# @return [CarrierWave::Storage::Fog::File] the location where the file will be stored.
+#
+"
+CarrierWave::Storage::Fog::File,connection,"","",(Fog::AWS::Storage::Mock or Fog::Storage::GoogleXML::Mock),"        def connection
+          @base.connection
+        end
+","##
+# connection to service
+#
+# === Returns
+#
+# [Fog::#{provider}::Storage] connection to service
+#
+"
+CarrierWave::Storage::Fog::File,directory,"","",(Fog::AWS::Storage::Directory or Fog::Storage::GoogleXML::Directory),"        def directory
+          @directory ||= begin
+            connection.directories.new(
+              :key    => @uploader.fog_directory,
+              :public => @uploader.fog_public
+            )
+          end
+        end
+","##
+# local reference to directory containing file
+#
+# === Returns
+#
+# [Fog::#{provider}::Directory] containing directory
+#
+"
+CarrierWave::Storage::Fog::File,file,"","",(Fog::AWS::Storage::File or Fog::Storage::GoogleXML::File),"        def file
+          @file ||= directory.files.head(path)
+        end
+","##
+# lookup file
+#
+# === Returns
+#
+# [Fog::#{provider}::File] file data from remote service
+#
+"
+CarrierWave::Storage::Fog::File,acl_header,"","","(Hash<%bot, %bot> or Hash<String, String>)","        def acl_header
+          if fog_provider == 'AWS'
+            { 'x-amz-acl' => @uploader.fog_public ? 'public-read' : 'private' }
+          else
+            {}
+          end
+        end
+",""
+CarrierWave::Storage::Fog::File,fog_provider,"","",String,"        def fog_provider
+          @uploader.fog_credentials[:provider].to_s
+        end
+",""
+CarrierWave::Storage::Fog::File,read_source_file,file_body,"file_body => File
+",String,"        def read_source_file(file_body)
+          return unless ::File.exist?(file_body.path)
+
+          begin
+            file_body = ::File.open(file_body.path) if file_body.closed? # Reopen if it's already closed
+            file_body.read
+          ensure
+            file_body.close
+          end
+        end
+",""
+CarrierWave::Storage::Fog::File,url_options_supported?,local_file,"local_file => (Fog::AWS::Storage::File or Fog::Storage::GoogleXML::File)
+",true,"        def url_options_supported?(local_file)
+          parameters = local_file.method(:url).parameters
+          parameters.count == 2 && parameters[1].include?(:options)
+        end
+",""
+CarrierWave::Storage::Abstract,identifier,"","",String,"      def identifier
+        uploader.filename
+      end
+",""
+CarrierWave::Test::Matchers::BeIdenticalTo,initialize,expected,"expected => String
+",String,"        def initialize(expected)
+          @expected = expected
+        end
+",""
+CarrierWave::Test::Matchers::BeIdenticalTo,matches?,actual,"actual => String
+",true,"        def matches?(actual)
+          @actual = actual
+          FileUtils.identical?(@actual, @expected)
+        end
+",""
+CarrierWave::Test::Matchers,be_identical_to,expected,"expected => String
+",CarrierWave::Test::Matchers::BeIdenticalTo,"      def be_identical_to(expected)
+        BeIdenticalTo.new(expected)
+      end
+",""
+CarrierWave::Test::Matchers,have_permissions,expected,"expected => Integer
+",CarrierWave::Test::Matchers::HavePermissions,"      def have_permissions(expected)
+        HavePermissions.new(expected)
+      end
+",""
+CarrierWave::Test::Matchers,have_directory_permissions,expected,"expected => Integer
+",CarrierWave::Test::Matchers::HaveDirectoryPermissions,"      def have_directory_permissions(expected)
+        HaveDirectoryPermissions.new(expected)
+      end
+",""
+CarrierWave::Test::Matchers::HavePermissions,initialize,expected,"expected => Integer
+",Integer,"        def initialize(expected)
+          @expected = expected
+        end
+",""
+CarrierWave::Test::Matchers::HaveDirectoryPermissions,initialize,expected,"expected => Integer
+",Integer,"        def initialize(expected)
+          @expected = expected
+        end
+",""
+CarrierWave::Uploader::Serialization,serializable_hash,options,"options => nil
+","(Hash<String, (Hash<String, String> or String)> or Hash<String, Hash<String, nil>> or Hash<String, String> or Hash<String, nil>)","      def serializable_hash(options = nil)
+        {""url"" => url}.merge Hash[versions.map { |name, version| [name.to_s, { ""url"" => version.url }] }]
+      end
+",""
+CarrierWave::Uploader::Serialization,as_json,options,"options => Hash<%bot, %bot>
+","(Hash<String, (Hash<String, String> or String)> or Hash<String, Hash<String, nil>> or Hash<String, String> or Hash<String, nil>)","      def as_json(options=nil)
+        serializable_hash
+      end
+",""
+CarrierWave::Uploader::Serialization,to_json,options,"options => Hash<Symbol, String>
+",String,"      def to_json(options=nil)
+        JSON.generate(as_json)
+      end
+",""
+CarrierWave::Uploader::Serialization,to_xml,options,"options => Hash<%bot, %bot>
+",String,"      def to_xml(options={})
+        merged_options = options.merge(:root => mounted_as || ""uploader"", :type => 'uploader')
+        serializable_hash.to_xml(merged_options)
+      end
+",""
+CarrierWave::Uploader::Processing::ClassMethods,process,args,"args => (Array<(RDL::Type::GenericType or RDL::Type::NominalType)> or Array<RDL::Type::GenericType> or Array<RDL::Type::NominalType>)
+","(Hash<Symbol, (Array<Integer> or String)> or Hash<Symbol, Array<%bot>> or Hash<Symbol, Array<Integer>> or Hash<Symbol, String>)","        def process(*args)
+          new_processors = args.inject({}) do |hash, arg|
+            arg = { arg => [] } unless arg.is_a?(Hash)
+            hash.merge!(arg)
+          end
+
+          condition = new_processors.delete(:if)
+          new_processors.each do |processor, processor_args|
+            self.processors += [[processor, processor_args, condition]]
+          end
+        end
+","##
+# Adds a processor callback which applies operations as a file is uploaded.
+# The argument may be the name of any method of the uploader, expressed as a symbol,
+# or a list of such methods, or a hash where the key is a method and the value is
+# an array of arguments to call the method with
+#
+# === Parameters
+#
+# args (*Symbol, Hash{Symbol => Array[]})
+#
+# === Examples
+#
+#     class MyUploader < CarrierWave::Uploader::Base
+#
+#       process :sepiatone, :vignette
+#       process :scale => [200, 200]
+#       process :scale => [200, 200], :if => :image?
+#       process :sepiatone, :if => :image?
+#
+#       def sepiatone
+#         ...
+#       end
+#
+#       def vignette
+#         ...
+#       end
+#
+#       def scale(height, width)
+#         ...
+#       end
+#
+#       def image?
+#         ...
+#       end
+#
+#     end
+#
+"
+CarrierWave::Uploader::Processing,process!,new_file,"new_file => (CarrierWave::SanitizedFile or RSpec::Mocks::Double or String)
+",Array<%bot>,"      def process!(new_file=nil)
+        return unless enable_processing
+
+        with_callbacks(:process, new_file) do
+          self.class.processors.each do |method, args, condition|
+            if(condition)
+              if condition.respond_to?(:call)
+                next unless condition.call(self, :args => args, :method => method, :file => new_file)
+              else
+                next unless self.send(condition, new_file)
+              end
+            end
+            self.send(method, *args)
+          end
+        end
+      end
+","##
+# Apply all process callbacks added through CarrierWave.process
+#
+"
+CarrierWave::Uploader::Mountable,index,"","",Integer,"      def index
+        model.__send__(:_mounter, mounted_as).uploaders.index(self)
+      end
+","##
+# Returns array index of given uploader within currently mounted uploaders
+#
+"
+CarrierWave::Uploader::Versions::ClassMethods,version,"name, options, block","name => Symbol
+options => (Hash<%bot, %bot> or Hash<Symbol, Proc> or Hash<Symbol, Symbol>)
+block => nil
+",Class,"        def version(name, options = {}, &block)
+          name = name.to_sym
+          build_version(name, options)
+
+          versions[name].class_eval(&block) if block
+          versions[name]
+        end
+","##
+# Adds a new version to this uploader
+#
+# === Parameters
+#
+# [name (#to_sym)] name of the version
+# [options (Hash)] optional options hash
+# [&block (Proc)] a block to eval on this version of the uploader
+#
+# === Examples
+#
+#     class MyUploader < CarrierWave::Uploader::Base
+#
+#       version :thumb do
+#         process :scale => [200, 200]
+#       end
+#
+#       version :preview, :if => :image? do
+#         process :scale => [200, 200]
+#       end
+#
+#     end
+#
+"
+CarrierWave::Uploader::Versions::ClassMethods,recursively_apply_block_to_versions,block,"block => nil
+","(Hash<%bot, %bot> or Hash<Symbol, Class>)","        def recursively_apply_block_to_versions(&block)
+          versions.each do |name, version|
+            version.class_eval(&block)
+            version.recursively_apply_block_to_versions(&block)
+          end
+        end
+",""
+CarrierWave::Uploader::Versions::ClassMethods,build_version,"name, options","name => Symbol
+options => (Hash<%bot, %bot> or Hash<Symbol, Proc> or Hash<Symbol, Symbol>)
+","Hash<Symbol, Class>","        def build_version(name, options)
+          if !versions.has_key?(name)
+            uploader = Class.new(self)
+            const_set(""Uploader#{uploader.object_id}"".tr('-', '_'), uploader)
+            uploader.version_names += [name]
+            uploader.versions = {}
+            uploader.processors = []
+            uploader.version_options = options
+
+            uploader.class_eval <<-RUBY, __FILE__, __LINE__ + 1
+              # Define the enable_processing method for versions so they get the
+              # value from the parent class unless explicitly overwritten
+              def self.enable_processing(value=nil)
+                self.enable_processing = value if value
+                if defined?(@enable_processing) && !@enable_processing.nil?
+                  @enable_processing
+                else
+                  superclass.enable_processing
+                end
+              end
+
+              # Regardless of what is set in the parent uploader, do not enforce the
+              # move_to_cache config option on versions because it moves the original
+              # file to the version's target file.
+              #
+              # If you want to enforce this setting on versions, override this method
+              # in each version:
+              #
+              # version :thumb do
+              #   def move_to_cache
+              #     true
+              #   end
+              # end
+              #
+              def move_to_cache
+                false
+              end
+            RUBY
+
+            class_eval <<-RUBY, __FILE__, __LINE__ + 1
+              def #{name}
+                versions[:#{name}]
+              end
+            RUBY
+          else
+            uploader = Class.new(versions[name])
+            const_set(""Uploader#{uploader.object_id}"".tr('-', '_'), uploader)
+            uploader.processors = []
+            uploader.version_options = uploader.version_options.merge(options)
+          end
+
+          # Add the current version hash to class attribute :versions
+          self.versions = versions.merge(name => uploader)
+        end
+",""
+CarrierWave::Uploader::Versions,version_name,"","",Symbol,"      def version_name
+        self.class.version_names.join('_').to_sym unless self.class.version_names.blank?
+      end
+","##
+# === Returns
+#
+# [String] the name of this version of the uploader
+#
+"
+CarrierWave::Uploader::Versions,version_exists?,name,"name => Symbol
+",true,"      def version_exists?(name)
+        name = name.to_sym
+
+        return false unless self.class.versions.has_key?(name)
+
+        condition = self.class.versions[name].version_options[:if]
+        if(condition)
+          if(condition.respond_to?(:call))
+            condition.call(self, :version => name, :file => file)
+          else
+            send(condition, file)
+          end
+        else
+          true
+        end
+      end
+","##
+#
+# === Parameters
+#
+# [name (#to_sym)] name of the version
+#
+# === Returns
+#
+# [Boolean] True when the version exists according to its :if condition
+#
+"
+CarrierWave::Uploader::Versions,url,args,"args => (Array<%bot> or Array<RDL::Type::GenericType> or Array<RDL::Type::NominalType>)
+",String,"      def url(*args)
+        if (version = args.first) && version.respond_to?(:to_sym)
+          raise ArgumentError, ""Version #{version} doesn't exist!"" if versions[version.to_sym].nil?
+          # recursively proxy to version
+          versions[version.to_sym].url(*args[1..-1])
+        elsif args.first
+          super(args.first)
+        else
+          super
+        end
+      end
+","##
+# When given a version name as a parameter, will return the url for that version
+# This also works with nested versions.
+# When given a query hash as a parameter, will return the url with signature that contains query params
+# Query hash only works with AWS (S3 storage).
+#
+# === Example
+#
+#     my_uploader.url                 # => /path/to/my/uploader.gif
+#     my_uploader.url(:thumb)         # => /path/to/my/thumb_uploader.gif
+#     my_uploader.url(:thumb, :small) # => /path/to/my/thumb_small_uploader.gif
+#     my_uploader.url(:query => {""response-content-disposition"" => ""attachment""})
+#     my_uploader.url(:version, :sub_version, :query => {""response-content-disposition"" => ""attachment""})
+#
+# === Parameters
+#
+# [*args (Symbol)] any number of versions
+# OR/AND
+# [Hash] query params
+#
+# === Returns
+#
+# [String] the location where this file is accessible via a url
+#
+"
+CarrierWave::Uploader::Versions,recreate_versions!,names,"names => Array<%bot>
+",Array<Symbol>,"      def recreate_versions!(*names)
+        # Some files could possibly not be stored on the local disk. This
+        # doesn't play nicely with processing. Make sure that we're only
+        # processing a cached file
+        #
+        # The call to store! will trigger the necessary callbacks to both
+        # process this version and all sub-versions
+
+        if names.any?
+          set_versions_to_cache_and_store(names)
+          store!(file)
+          reset_versions_to_cache_and_store
+        else
+          cache! if !cached?
+          store!
+        end
+      end
+","##
+# Recreate versions and reprocess them. This can be used to recreate
+# versions if their parameters somehow have changed.
+#
+"
+CarrierWave::Uploader::Versions,versions_to_cache,"","",(Array<%bot> or Array<Array<(MyCoolUploader::Uploader70218669804760 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218683580920 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218726737160 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218727434820 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218728891120 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218730026640 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218730026640::Uploader70218730041360 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218735522000 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218735914860 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218736718400 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218744192220 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218756202160 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218756801660 or Symbol)>> or Array<Array<(Symbol or Uploader70218669988800::Uploader70218703150800)>> or Array<Array<(Symbol or Uploader70218683697480::Uploader70218704816580)>>),"      def versions_to_cache
+        @versions_to_cache || dependent_versions
+      end
+",""
+CarrierWave::Uploader::Versions,versions_to_store,"","","Hash<%bot, %bot>","      def versions_to_store
+        @versions_to_store || active_versions
+      end
+",""
+CarrierWave::Uploader::Versions,dependent_versions,"","",(Array<%bot> or Array<Array<(MyCoolUploader::Uploader70218669804760 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218683580920 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218726737160 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218727434820 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218728891120 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218730026640 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218730026640::Uploader70218730041360 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218735522000 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218735914860 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218736718400 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218744192220 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218756202160 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218756801660 or Symbol)>> or Array<Array<(Symbol or Uploader70218669988800::Uploader70218703150800)>> or Array<Array<(Symbol or Uploader70218683697480::Uploader70218704816580)>>),"      def dependent_versions
+        active_versions.reject do |name, v|
+          v.class.version_options[:from_version]
+        end.to_a + sibling_versions.select do |name, v|
+          v.class.version_options[:from_version] == self.class.version_names.last
+        end.to_a
+      end
+",""
+CarrierWave::Uploader::Versions,sibling_versions,"","","(Array<%bot> or Hash<Symbol, MyCoolUploader::Uploader70218669804760> or Hash<Symbol, MyCoolUploader::Uploader70218683580920> or Hash<Symbol, MyCoolUploader::Uploader70218726737160> or Hash<Symbol, MyCoolUploader::Uploader70218727434820> or Hash<Symbol, MyCoolUploader::Uploader70218728891120> or Hash<Symbol, MyCoolUploader::Uploader70218730026640::Uploader70218730041360> or Hash<Symbol, MyCoolUploader::Uploader70218730026640> or Hash<Symbol, MyCoolUploader::Uploader70218735522000> or Hash<Symbol, MyCoolUploader::Uploader70218735914860> or Hash<Symbol, MyCoolUploader::Uploader70218736718400> or Hash<Symbol, MyCoolUploader::Uploader70218744192220> or Hash<Symbol, MyCoolUploader::Uploader70218756202160> or Hash<Symbol, MyCoolUploader::Uploader70218756801660> or Hash<Symbol, Uploader70218669988800::Uploader70218703150800> or Hash<Symbol, Uploader70218683697480::Uploader70218704816580>)","      def sibling_versions
+        parent_version.try(:versions) || []
+      end
+",""
+CarrierWave::Uploader::Versions,full_filename,for_file,"for_file => String
+",String,"      def full_filename(for_file)
+        [version_name, super(for_file)].compact.join('_')
+      end
+",""
+CarrierWave::Uploader::Versions,full_original_filename,"","",String,"      def full_original_filename
+        [version_name, super].compact.join('_')
+      end
+",""
+CarrierWave::Uploader::Versions,cache_versions!,new_file,"new_file => (CarrierWave::SanitizedFile or RSpec::Mocks::Double)
+",(Array<%bot> or Array<Array<(MyCoolUploader::Uploader70218669804760 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218683580920 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218726737160 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218727434820 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218728891120 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218730026640 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218730026640::Uploader70218730041360 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218735522000 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218735914860 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218736718400 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218744192220 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218756202160 or Symbol)>> or Array<Array<(MyCoolUploader::Uploader70218756801660 or Symbol)>> or Array<Array<(Symbol or Uploader70218669988800::Uploader70218703150800)>> or Array<Array<(Symbol or Uploader70218683697480::Uploader70218704816580)>>),"      def cache_versions!(new_file)
+        versions_to_cache.each do |name, v|
+          v.send(:cache_id=, @cache_id)
+          v.cache!(new_file)
+        end
+      end
+",""
+CarrierWave::Uploader::Versions,store_versions!,new_file,"new_file => (CarrierWave::SanitizedFile or CarrierWave::Storage::Fog::File or File)
+","Hash<%bot, %bot>","      def store_versions!(new_file)
+        versions_to_store.each { |name, v| v.store!(new_file) }
+      end
+",""
+CarrierWave::Uploader::Versions,remove_versions!,"","","Hash<%bot, %bot>","      def remove_versions!
+        versions.each { |name, v| v.remove! }
+      end
+",""
+CarrierWave::Uploader::Versions,retrieve_versions_from_store!,identifier,"identifier => String
+","Hash<%bot, %bot>","      def retrieve_versions_from_store!(identifier)
+        active_versions.each { |name, v| v.retrieve_from_store!(identifier) }
+      end
+",""
+CarrierWave::Uploader::Callbacks,with_callbacks,"kind, args","kind => Symbol
+args => (Array<%bot> or Array<RDL::Type::NominalType> or Array<RDL::Type::SingletonType>)
+",(Array<%bot> or Array<Symbol>),"      def with_callbacks(kind, *args)
+        self.class._before_callbacks[kind].each { |c| send c, *args }
+        yield
+        self.class._after_callbacks[kind].each { |c| send c, *args }
+      end
+",""
+CarrierWave::Uploader::Callbacks::ClassMethods,before,"kind, callback","kind => Symbol
+callback => Symbol
+","Hash<Symbol, Array<Symbol>>","        def before(kind, callback)
+          self._before_callbacks = self._before_callbacks.
+            merge kind => _before_callbacks[kind] + [callback]
+        end
+",""
+CarrierWave::Uploader::DefaultUrl,url,args,"args => (Array<%bot> or Array<RDL::Type::GenericType> or Array<RDL::Type::NominalType>)
+",String,"      def url(*args)
+        super || default_url(*args)
+      end
+",""
+CarrierWave::Uploader::DefaultUrl,default_url,args,"args => (Array<%bot> or Array<RDL::Type::GenericType>)
+",nil,"      def default_url(*args); end
+","##
+# Override this method in your uploader to provide a default url
+# in case no file has been cached/stored yet.
+#
+"
+CarrierWave::Uploader::ContentTypeWhitelist,content_type_whitelist,"","",nil,"      def content_type_whitelist; end
+","##
+# Override this method in your uploader to provide a whitelist of files content types
+# which are allowed to be uploaded.
+# Not only strings but Regexp are allowed as well.
+#
+# === Returns
+#
+# [NilClass, String, Regexp, Array[String, Regexp]] a whitelist of content types which are allowed to be uploaded
+#
+# === Examples
+#
+#     def content_type_whitelist
+#       %w(text/json application/json)
+#     end
+#
+# Basically the same, but using a Regexp:
+#
+#     def content_type_whitelist
+#       [/(text|application)\/json/]
+#     end
+#
+"
+CarrierWave::Uploader::ContentTypeWhitelist,check_content_type_whitelist!,new_file,"new_file => (CarrierWave::SanitizedFile or RSpec::Mocks::Double)
+",nil,"      def check_content_type_whitelist!(new_file)
+        content_type = new_file.content_type
+        if content_type_whitelist && !whitelisted_content_type?(content_type)
+          raise CarrierWave::IntegrityError, I18n.translate(:""errors.messages.content_type_whitelist_error"", content_type: content_type, allowed_types: Array(content_type_whitelist).join("", ""))
+        end
+      end
+",""
+CarrierWave::Uploader::ContentTypeWhitelist,whitelisted_content_type?,content_type,"content_type => String
+",(false or true),"      def whitelisted_content_type?(content_type)
+        Array(content_type_whitelist).any? { |item| content_type =~ /#{item}/ }
+      end
+",""
+CarrierWave::Uploader::ExtensionBlacklist,extension_blacklist,"","",nil,"      def extension_blacklist; end
+","##
+# Override this method in your uploader to provide a black list of extensions which
+# are prohibited to be uploaded. Compares the file's extension case insensitive.
+# Furthermore, not only strings but Regexp are allowed as well.
+#
+# When using a Regexp in the black list, `\A` and `\z` are automatically added to
+# the Regexp expression, also case insensitive.
+#
+# === Returns
+# [NilClass, String, Regexp, Array[String, Regexp]] a black list of extensions which are prohibited to be uploaded
+#
+# === Examples
+#
+#     def extension_blacklist
+#       %w(swf tiff)
+#     end
+#
+# Basically the same, but using a Regexp:
+#
+#     def extension_blacklist
+#       [/swf/, 'tiff']
+#     end
+#
+"
+CarrierWave::Uploader::ExtensionBlacklist,check_extension_blacklist!,new_file,"new_file => (CarrierWave::SanitizedFile or RSpec::Mocks::Double)
+",nil,"      def check_extension_blacklist!(new_file)
+        extension = new_file.extension.to_s
+        if extension_blacklist && blacklisted_extension?(extension)
+          raise CarrierWave::IntegrityError, I18n.translate(:""errors.messages.extension_blacklist_error"", extension: new_file.extension.inspect, prohibited_types: Array(extension_blacklist).join("", ""))
+        end
+      end
+",""
+CarrierWave::Uploader::ExtensionBlacklist,blacklisted_extension?,extension,"extension => String
+",(false or true),"      def blacklisted_extension?(extension)
+        Array(extension_blacklist).any? { |item| extension =~ /\A#{item}\z/i }
+      end
+",""
+CarrierWave::Uploader::Url,url,options,"options => Hash<%bot, %bot>
+",String,"      def url(options = {})
+        if file.respond_to?(:url) && !(tmp_url = file.url).blank?
+          file.method(:url).arity.zero? ? tmp_url : file.url(options)
+        elsif file.respond_to?(:path)
+          path = encode_path(file.path.sub(File.expand_path(root), ''))
+
+          if host = asset_host
+            if host.respond_to? :call
+              ""#{host.call(file)}#{path}""
+            else
+              ""#{host}#{path}""
+            end
+          else
+            (base_path || """") + path
+          end
+        end
+      end
+","##
+# === Parameters
+#
+# [Hash] optional, the query params (only AWS)
+#
+# === Returns
+#
+# [String] the location where this file is accessible via a url
+#
+"
+CarrierWave::Uploader::Url,to_s,"","",String,"      def to_s
+        url || ''
+      end
+",""
+CarrierWave::Uploader::Cache::ClassMethods,clean_cached_files!,seconds,"seconds => (ActiveSupport::Duration or Integer)
+",(Array<%bot> or Array<Fog::AWS::Storage::File> or Array<Fog::Storage::GoogleXML::File> or Array<String>),"        def clean_cached_files!(seconds=60*60*24)
+          (cache_storage || storage).new(CarrierWave::Uploader::Base.new).clean_cache!(seconds)
+        end
+","##
+# Removes cached files which are older than one day. You could call this method
+# from a rake task to clean out old cached files.
+#
+# You can call this method directly on the module like this:
+#
+#   CarrierWave.clean_cached_files!
+#
+# === Note
+#
+# This only works as long as you haven't done anything funky with your cache_dir.
+# It's recommended that you keep cache files in one place only.
+#
+"
+CarrierWave::Uploader::Cache,cached?,"","",String,"      def cached?
+        @cache_id
+      end
+","##
+# Returns true if the uploader has been cached
+#
+# === Returns
+#
+# [Bool] whether the current file is cached
+#
+"
+CarrierWave::Uploader::Cache,cache_stored_file!,"","",Array<Symbol>,"      def cache_stored_file!
+        cache!
+      end
+","##
+# Caches the remotely stored file
+#
+# This is useful when about to process images. Most processing solutions
+# require the file to be stored on the local filesystem.
+#
+"
+CarrierWave::Uploader::Cache,cache_name,"","",String,"      def cache_name
+        File.join(cache_id, full_original_filename) if cache_id && original_filename
+      end
+","##
+# Returns a String which uniquely identifies the currently cached file for later retrieval
+#
+# === Returns
+#
+# [String] a cache name, in the format TIMEINT-PID-COUNTER-RND/filename.txt
+#
+"
+CarrierWave::Uploader::Cache,retrieve_from_cache!,cache_name,"cache_name => String
+",Array<Symbol>,"      def retrieve_from_cache!(cache_name)
+        with_callbacks(:retrieve_from_cache, cache_name) do
+          self.cache_id, self.original_filename = cache_name.to_s.split('/', 2)
+          @staged = true
+          @filename = original_filename
+          @file = cache_storage.retrieve_from_cache!(full_filename(original_filename))
+        end
+      end
+","##
+# Retrieves the file with the given cache_name from the cache.
+#
+# === Parameters
+#
+# [cache_name (String)] uniquely identifies a cache file
+#
+# === Raises
+#
+# [CarrierWave::InvalidParameter] if the cache_name is incorrectly formatted.
+#
+"
+CarrierWave::Uploader::Cache,cache_id=,cache_id,"cache_id => String
+",String,"      def cache_id=(cache_id)
+        # Earlier version used 3 part cache_id. Thus we should allow for
+        # the cache_id to have both 3 part and 4 part formats.
+        raise CarrierWave::InvalidParameter, ""invalid cache id"" unless cache_id =~ /\A(-)?[\d]+\-[\d]+(\-[\d]{4})?\-[\d]{4}\z/
+        @cache_id = cache_id
+      end
+",""
+CarrierWave::Uploader::Cache,original_filename=,filename,"filename => String
+",String,"      def original_filename=(filename)
+        raise CarrierWave::InvalidParameter, ""invalid filename"" if filename =~ CarrierWave::SanitizedFile.sanitize_regexp
+        @original_filename = filename
+      end
+",""
+CarrierWave::Uploader::Cache,cache_storage,"","",(CarrierWave::Storage::File or CarrierWave::Storage::Fog or RSpec::Mocks::Double),"      def cache_storage
+        @cache_storage ||= (self.class.cache_storage || self.class.storage).new(self)
+      end
+",""
+CarrierWave::Uploader::Proxy,blank?,"","",(false or true),"      def blank?
+        file.blank?
+      end
+","##
+# === Returns
+#
+# [Boolean] Whether the uploaded file is blank
+#
+"
+CarrierWave::Uploader::Proxy,current_path,"","",String,"      def current_path
+        file.try(:path)
+      end
+","##
+# === Returns
+#
+# [String] the path where the file is currently located.
+#
+"
+CarrierWave::Uploader::Proxy,identifier,"","",String,"      def identifier
+        @identifier || storage.try(:identifier)
+      end
+","##
+# Returns a string that uniquely identifies the retrieved or last stored file
+#
+# === Returns
+#
+# [String] uniquely identifies a file
+#
+"
+CarrierWave::Uploader::Proxy,read,"","",String,"      def read
+        file.try(:read)
+      end
+","##
+# Read the contents of the file
+#
+# === Returns
+#
+# [String] contents of the file
+#
+"
+CarrierWave::Uploader::Proxy,size,"","",Integer,"      def size
+        file.try(:size) || 0
+      end
+","##
+# Fetches the size of the currently stored/cached file
+#
+# === Returns
+#
+# [Integer] size of the file
+#
+"
+CarrierWave::Uploader::Proxy,length,"","",Integer,"      def length
+        size
+      end
+","##
+# Return the size of the file when asked for its length
+#
+# === Returns
+#
+# [Integer] size of the file
+#
+# === Note
+#
+# This was added because of the way Rails handles length/size validations in 3.0.6 and above.
+#
+"
+CarrierWave::Uploader::Proxy,content_type,"","",String,"      def content_type
+        file.try(:content_type)
+      end
+","##
+# Read the content type of the file
+#
+# === Returns
+#
+# [String] content type of the file
+#
+"
+CarrierWave::Uploader::Remove,remove!,"","",Array<Symbol>,"      def remove!
+        with_callbacks(:remove) do
+          @file.delete if @file
+          @file = nil
+          @cache_id = nil
+        end
+      end
+","##
+# Removes the file and reset it
+#
+"
+CarrierWave::Uploader::Download,download!,"uri, remote_headers","uri => String
+remote_headers => Hash<%bot, %bot>
+",Array<Symbol>,"      def download!(uri, remote_headers = {})
+        file = downloader.new(self).download(uri, remote_headers)
+        cache!(file)
+      end
+","##
+# Caches the file by downloading it from the given URL, using downloader.
+#
+# === Parameters
+#
+# [url (String)] The URL where the remote file is stored
+# [remote_headers (Hash)] Request headers
+#
+"
+CarrierWave::Uploader::FileSize,size_range,"","",nil,"      def size_range; end
+","##
+# Override this method in your uploader to provide a Range of Size which
+# are allowed to be uploaded.
+# === Returns
+#
+# [NilClass, Range] a size range which are permitted to be uploaded
+#
+# === Examples
+#
+#     def size_range
+#       3256...5748
+#     end
+#
+"
+CarrierWave::Uploader::FileSize,check_size!,new_file,"new_file => (CarrierWave::SanitizedFile or RSpec::Mocks::Double)
+",nil,"      def check_size!(new_file)
+        size = new_file.size
+        expected_size_range = size_range
+        if expected_size_range.is_a?(::Range)
+          if size < expected_size_range.min
+            raise CarrierWave::IntegrityError, I18n.translate(:""errors.messages.min_size_error"", :min_size => ActiveSupport::NumberHelper.number_to_human_size(expected_size_range.min))
+          elsif size > expected_size_range.max
+            raise CarrierWave::IntegrityError, I18n.translate(:""errors.messages.max_size_error"", :max_size => ActiveSupport::NumberHelper.number_to_human_size(expected_size_range.max))
+          end
+        end
+      end
+",""
+CarrierWave::Uploader::Configuration::ClassMethods,storage,storage,"storage => (RSpec::Mocks::Double or Symbol)
+",(Class or RSpec::Mocks::Double),"        def storage(storage = nil)
+          case storage
+          when Symbol
+            if storage_engine = storage_engines[storage]
+              self._storage = eval storage_engine
+            else
+              raise CarrierWave::UnknownStorageError, ""Unknown storage: #{storage}""
+            end
+          when nil
+            storage
+          else
+            self._storage = storage
+          end
+          _storage
+        end
+","##
+# Sets the storage engine to be used when storing files with this uploader.
+# Can be any class that implements a #store!(CarrierWave::SanitizedFile) and a #retrieve!
+# method. See lib/carrierwave/storage/file.rb for an example. Storage engines should
+# be added to CarrierWave::Uploader::Base.storage_engines so they can be referred
+# to by a symbol, which should be more convenient
+#
+# If no argument is given, it will simply return the currently used storage engine.
+#
+# === Parameters
+#
+# [storage (Symbol, Class)] The storage engine to use for this uploader
+#
+# === Returns
+#
+# [Class] the storage engine to be used with this uploader
+#
+# === Examples
+#
+#     storage :file
+#     storage CarrierWave::Storage::File
+#     storage MyCustomStorageEngine
+#
+"
+CarrierWave::Uploader::Configuration::ClassMethods,cache_storage,storage,"storage => (Symbol or false)
+",Class,"        def cache_storage(storage = false)
+          unless storage == false
+            self._cache_storage = storage.is_a?(Symbol) ? eval(storage_engines[storage]) : storage
+          end
+          _cache_storage
+        end
+","##
+# Sets the cache storage engine to be used when storing cache files with this uploader.
+# Same as .storage except for required methods being #cache!(CarrierWave::SanitizedFile),
+# #retrieve_from_cache! and #delete_dir!.
+#
+# === Parameters
+#
+# [storage (Symbol, Class)] The cache storage engine to use for this uploader
+#
+# === Returns
+#
+# [Class] the cache storage engine to be used with this uploader
+#
+# === Examples
+#
+#     cache_storage :file
+#     cache_storage CarrierWave::Storage::File
+#     cache_storage MyCustomStorageEngine
+#
+"
+CarrierWave::Uploader::Configuration::ClassMethods,add_config,name,"name => Symbol
+",Symbol,"        def add_config(name)
+          class_eval <<-RUBY, __FILE__, __LINE__ + 1
+            @#{name} = nil
+
+            def self.#{name}(value=nil)
+              @#{name} = value if value
+              return @#{name} if self.object_id == #{self.object_id} || defined?(@#{name})
+              name = superclass.#{name}
+              return nil if name.nil? && !instance_variable_defined?(:@#{name})
+              @#{name} = name && !name.is_a?(Module) && !name.is_a?(Symbol) && !name.is_a?(Numeric) && !name.is_a?(TrueClass) && !name.is_a?(FalseClass) ? name.dup : name
+            end
+
+            def self.#{name}=(value)
+              @#{name} = value
+            end
+
+            def #{name}=(value)
+              @#{name} = value
+            end
+
+            def #{name}
+              value = @#{name} if instance_variable_defined?(:@#{name})
+              value = self.class.#{name} unless instance_variable_defined?(:@#{name})
+              if value.instance_of?(Proc)
+                value.arity >= 1 ? value.call(self) : value.call
+              else
+                value
+              end
+            end
+          RUBY
+        end
+",""
+CarrierWave::Uploader::Configuration::ClassMethods,configure,"","",(Proc or String or Symbol or false or true),"        def configure
+          yield self
+        end
+",""
+CarrierWave::Uploader::Configuration::ClassMethods,reset_config,"","",true,"        def reset_config
+          configure do |config|
+            config.permissions = 0644
+            config.directory_permissions = 0755
+            config.storage_engines = {
+              :file => ""CarrierWave::Storage::File"",
+              :fog  => ""CarrierWave::Storage::Fog""
+            }
+            config.storage = :file
+            config.cache_storage = nil
+            config.fog_attributes = {}
+            config.fog_credentials = {}
+            config.fog_public = true
+            config.fog_authenticated_url_expiration = 600
+            config.fog_use_ssl_for_aws = true
+            config.fog_aws_accelerate = false
+            config.store_dir = 'uploads'
+            config.cache_dir = 'uploads/tmp'
+            config.delete_tmp_file_after_storage = true
+            config.move_to_cache = false
+            config.move_to_store = false
+            config.remove_previously_stored_files_after_update = true
+            config.downloader = CarrierWave::Downloader::Base
+            config.ignore_integrity_errors = true
+            config.ignore_processing_errors = true
+            config.ignore_download_errors = true
+            config.validate_integrity = true
+            config.validate_processing = true
+            config.validate_download = true
+            config.root = lambda { CarrierWave.root }
+            config.base_path = CarrierWave.base_path
+            config.enable_processing = true
+            config.ensure_multipart_form = true
+          end
+        end
+","##
+# sets configuration back to default
+#
+"
+CarrierWave::Uploader::Store,filename,"","",String,"      def filename
+        @filename
+      end
+","##
+# Override this in your Uploader to change the filename.
+#
+# Be careful using record ids as filenames. If the filename is stored in the database
+# the record id will be nil when the filename is set. Don't use record ids unless you
+# understand this limitation.
+#
+# Do not use the version_name in the filename, as it will prevent versions from being
+# loaded correctly.
+#
+# === Returns
+#
+# [String] a filename
+#
+"
+CarrierWave::Uploader::Store,store!,new_file,"new_file => (CarrierWave::SanitizedFile or CarrierWave::Storage::Fog::File or File)
+",Array<Symbol>,"      def store!(new_file=nil)
+        cache!(new_file) if new_file && ((@cache_id != parent_cache_id) || @cache_id.nil?)
+        if !cache_only && @file && @cache_id
+          with_callbacks(:store, new_file) do
+            new_file = storage.store!(@file)
+            if delete_tmp_file_after_storage
+              @file.delete unless move_to_store
+              cache_storage.delete_dir!(cache_path(nil))
+            end
+            @file = new_file
+            @cache_id = @identifier = nil
+            @staged = false
+          end
+        end
+      end
+","##
+# Stores the file by passing it to this Uploader's storage engine.
+#
+# If new_file is omitted, a previously cached file will be stored.
+#
+# === Parameters
+#
+# [new_file (File, IOString, Tempfile)] any kind of file object
+#
+"
+CarrierWave::Uploader::Store,retrieve_from_store!,identifier,"identifier => String
+",Array<Symbol>,"      def retrieve_from_store!(identifier)
+        with_callbacks(:retrieve_from_store, identifier) do
+          @file = storage.retrieve!(identifier)
+          @identifier = identifier
+        end
+      end
+","##
+# Retrieves the file from the storage.
+#
+# === Parameters
+#
+# [identifier (String)] uniquely identifies the file to retrieve
+#
+"
+CarrierWave::Uploader::Store,full_filename,for_file,"for_file => String
+",String,"      def full_filename(for_file)
+        for_file
+      end
+",""
+CarrierWave::Uploader::Store,storage,"","",(CarrierWave::Storage::File or CarrierWave::Storage::Fog or RSpec::Mocks::Double),"      def storage
+        @storage ||= self.class.storage.new(self)
+      end
+",""
+CarrierWave::Uploader::ContentTypeBlacklist,content_type_blacklist,"","",nil,"      def content_type_blacklist; end
+","##
+# Override this method in your uploader to provide a blacklist of files content types
+# which are not allowed to be uploaded.
+# Not only strings but Regexp are allowed as well.
+#
+# === Returns
+#
+# [NilClass, String, Regexp, Array[String, Regexp]] a blacklist of content types which are not allowed to be uploaded
+#
+# === Examples
+#
+#     def content_type_blacklist
+#       %w(text/json application/json)
+#     end
+#
+# Basically the same, but using a Regexp:
+#
+#     def content_type_blacklist
+#       [/(text|application)\/json/]
+#     end
+#
+"
+CarrierWave::Uploader::ContentTypeBlacklist,check_content_type_blacklist!,new_file,"new_file => (CarrierWave::SanitizedFile or RSpec::Mocks::Double)
+",nil,"      def check_content_type_blacklist!(new_file)
+        content_type = new_file.content_type
+        if content_type_blacklist && blacklisted_content_type?(content_type)
+          raise CarrierWave::IntegrityError, I18n.translate(:""errors.messages.content_type_blacklist_error"", content_type: content_type)
+        end
+      end
+",""
+CarrierWave::Uploader::ContentTypeBlacklist,blacklisted_content_type?,content_type,"content_type => String
+",(false or true),"      def blacklisted_content_type?(content_type)
+        Array(content_type_blacklist).any? { |item| content_type =~ /#{item}/ }
+      end
+",""
+CarrierWave::Uploader::ExtensionWhitelist,extension_whitelist,"","",nil,"      def extension_whitelist; end
+","##
+# Override this method in your uploader to provide a white list of extensions which
+# are allowed to be uploaded. Compares the file's extension case insensitive.
+# Furthermore, not only strings but Regexp are allowed as well.
+#
+# When using a Regexp in the white list, `\A` and `\z` are automatically added to
+# the Regexp expression, also case insensitive.
+#
+# === Returns
+#
+# [NilClass, String, Regexp, Array[String, Regexp]] a white list of extensions which are allowed to be uploaded
+#
+# === Examples
+#
+#     def extension_whitelist
+#       %w(jpg jpeg gif png)
+#     end
+#
+# Basically the same, but using a Regexp:
+#
+#     def extension_whitelist
+#       [/jpe?g/, 'gif', 'png']
+#     end
+#
+"
+CarrierWave::Uploader::ExtensionWhitelist,check_extension_whitelist!,new_file,"new_file => (CarrierWave::SanitizedFile or RSpec::Mocks::Double)
+",nil,"      def check_extension_whitelist!(new_file)
+        extension = new_file.extension.to_s
+        if extension_whitelist && !whitelisted_extension?(extension)
+          raise CarrierWave::IntegrityError, I18n.translate(:""errors.messages.extension_whitelist_error"", extension: new_file.extension.inspect, allowed_types: Array(extension_whitelist).join("", ""))
+        end
+      end
+",""
+CarrierWave::Uploader::ExtensionWhitelist,whitelisted_extension?,extension,"extension => String
+",(false or true),"      def whitelisted_extension?(extension)
+        downcase_extension = extension.downcase
+        Array(extension_whitelist).any? { |item| downcase_extension =~ /\A#{item}\z/i }
+      end
+",""
+CarrierWave::Utilities::Uri,encode_path,path,"path => String
+",String,"      def encode_path(path)
+        path.to_s.gsub(UNSAFE) do
+          us = $&
+          tmp = ''
+          us.each_byte do |uc|
+            tmp << sprintf('%%%02X', uc)
+          end
+          tmp
+        end
+      end
+",""
+CarrierWave::Validations::ActiveModel::HelperMethods,validates_integrity_of,attr_names,"attr_names => Array<RDL::Type::NominalType>
+",Array<Class>,"        def validates_integrity_of(*attr_names)
+          validates_with IntegrityValidator, _merge_attributes(attr_names)
+        end
+","##
+# Makes the record invalid if the file couldn't be uploaded due to an integrity error
+#
+# Accepts the usual parameters for validations in Rails (:if, :unless, etc...)
+#
+"
+CarrierWave::Validations::ActiveModel::HelperMethods,validates_processing_of,attr_names,"attr_names => Array<RDL::Type::NominalType>
+",Array<Class>,"        def validates_processing_of(*attr_names)
+          validates_with ProcessingValidator, _merge_attributes(attr_names)
+        end
+","##
+# Makes the record invalid if the file couldn't be processed (assuming the process failed
+# with a CarrierWave::ProcessingError)
+#
+# Accepts the usual parameters for validations in Rails (:if, :unless, etc...)
+#
+"
+CarrierWave::Validations::ActiveModel::HelperMethods,validates_download_of,attr_names,"attr_names => Array<RDL::Type::NominalType>
+",Array<Class>,"        def validates_download_of(*attr_names)
+          validates_with DownloadValidator, _merge_attributes(attr_names)
+        end
+","#
+##
+# Makes the record invalid if the remote file couldn't be downloaded
+#
+# Accepts the usual parameters for validations in Rails (:if, :unless, etc...)
+#
+"

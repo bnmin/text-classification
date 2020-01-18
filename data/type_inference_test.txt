@@ -1,0 +1,91 @@
+nil	## # overwrite this to read from a serialized attribute #
+nil	## # overwrite this to write to a serialized attribute #
+String	## # Returns the filename as is, without sanitizing it. # # === Returns # # [String] the unsanitized filename #
+String	## # Returns the filename, sanitized to strip out any evil characters. # # === Returns # # [String] the sanitized filename #
+String	## # Returns the part of the filename before the extension. So if a file is called 'test.jpeg' # this would return 'test' # # === Returns # # [String] the first part of the filename #
+String	## # Returns the file extension # # === Returns # # [String] the extension #
+Integer	## # Returns the file's size. # # === Returns # # [Integer] the file's size in bytes. #
+String	## # Returns the full path to the file. If the file has no path, it will return nil. # # === Returns # # [String, nil] the path where the file is located. #
+String	## # Returns the contents of the file. # # === Returns # # [String] contents of the file #
+Integer	## # Helper to move file to new path. #
+Integer	## # Helper to create copy of file in new path. #
+String	## # Returns the content type of the file. # # === Returns # # [String] the content type of the file #
+String	## # Sets the content type of the file. # # === Returns # # [String] the content type of the file #
+String	# Sanitize the filename, to prevent hacking
+Integer	## # Returns the width of the image. # # === Returns # # [Integer] the image's width in pixels #
+Integer	## # Returns the height of the image. # # === Returns # # [Integer] the image's height in pixels #
+Integer	## # Returns the width of the image in pixels. # # === Returns # # [Integer] the image's width in pixels #
+Integer	## # Returns the height of the image in pixels. # # === Returns # # [Integer] the image's height in pixels #
+Integer	## # Deletes a cache dir #
+nil	## # Deletes a cache dir #
+String	## # Return a temporary authenticated url to a private file, if available # Only supported for AWS, Rackspace, Google, AzureRM and Aliyun providers # # === Returns # # [String] temporary authenticated url # or # [NilClass] no authenticated url available #
+String	## # Lookup value for file content-type header # # === Returns # # [String] value of content-type #
+String	## # Return extension of file # # === Returns # # [String] extension of file or nil if the file has no extension #
+String	## # Read content of file from service # # === Returns # # [String] contents of file
+Integer	## # Return size of file body # # === Returns # # [Integer] size of file body #
+String	## # Return a url to a public file, if available # # === Returns # # [String] public url # or # [NilClass] no public url available #
+String	## # Return url to file, if avaliable # # === Returns # # [String] url # or # [NilClass] no url available #
+String	## # Return file name, if available # # === Returns # # [String] file name # or # [NilClass] no file name available #
+Integer	## # Returns array index of given uploader within currently mounted uploaders #
+String	## # When given a version name as a parameter, will return the url for that version # This also works with nested versions. # When given a query hash as a parameter, will return the url with signature that contains query params # Query hash only works with AWS (S3 storage). # # === Example # # my uploader.url # => /path/to/my/uploader.gif # my uploader.url(:thumb) # => /path/to/my/thumb uploader.gif # my uploader.url(:thumb, :small) # => /path/to/my/thumb small uploader.gif # my uploader.url(:query => {"response-content-disposition" => "attachment"}) # my uploader.url(:version, :sub version, :query => {"response-content-disposition" => "attachment"}) # # === Parameters # # [*args (Symbol)] any number of versions # OR/AND # [Hash] query params # # === Returns # # [String] the location where this file is accessible via a url #
+nil	## # Override this method in your uploader to provide a default url # in case no file has been cached/stored yet. #
+nil	## # Override this method in your uploader to provide a whitelist of files content types # which are allowed to be uploaded. # Not only strings but Regexp are allowed as well. # # === Returns # # [NilClass, String, Regexp, Array[String, Regexp]] a whitelist of content types which are allowed to be uploaded # # === Examples # # def content type whitelist # %w(text/json application/json) # end # # Basically the same, but using a Regexp: # # def content type whitelist # [/(text|application)\/json/] # end #
+nil	## # Override this method in your uploader to provide a black list of extensions which # are prohibited to be uploaded. Compares the file's extension case insensitive. # Furthermore, not only strings but Regexp are allowed as well. # # When using a Regexp in the black list, `\A` and `\z` are automatically added to # the Regexp expression, also case insensitive. # # === Returns # [NilClass, String, Regexp, Array[String, Regexp]] a black list of extensions which are prohibited to be uploaded # # === Examples # # def extension blacklist # %w(swf tiff) # end # # Basically the same, but using a Regexp: # # def extension blacklist # [/swf/, 'tiff'] # end #
+String	## # === Parameters # # [Hash] optional, the query params (only AWS) # # === Returns # # [String] the location where this file is accessible via a url #
+String	## # Returns true if the uploader has been cached # # === Returns # # [Bool] whether the current file is cached #
+String	## # Returns a String which uniquely identifies the currently cached file for later retrieval # # === Returns # # [String] a cache name, in the format TIMEINT-PID-COUNTER-RND/filename.txt #
+String	## # === Returns # # [String] the path where the file is currently located. #
+String	## # Returns a string that uniquely identifies the retrieved or last stored file # # === Returns # # [String] uniquely identifies a file #
+String	## # Read the contents of the file # # === Returns # # [String] contents of the file #
+Integer	## # Fetches the size of the currently stored/cached file # # === Returns # # [Integer] size of the file #
+Integer	## # Return the size of the file when asked for its length # # === Returns # # [Integer] size of the file # # === Note # # This was added because of the way Rails handles length/size validations in 3.0.6 and above. #
+String	## # Read the content type of the file # # === Returns # # [String] content type of the file #
+nil	## # Override this method in your uploader to provide a Range of Size which # are allowed to be uploaded. # === Returns # # [NilClass, Range] a size range which are permitted to be uploaded # # === Examples # # def size range # 3256...5748 # end #
+String	## # Override this in your Uploader to change the filename. # # Be careful using record ids as filenames. If the filename is stored in the database # the record id will be nil when the filename is set. Don't use record ids unless you # understand this limitation. # # Do not use the version name in the filename, as it will prevent versions from being # loaded correctly. # # === Returns # # [String] a filename #
+nil	## # Override this method in your uploader to provide a blacklist of files content types # which are not allowed to be uploaded. # Not only strings but Regexp are allowed as well. # # === Returns # # [NilClass, String, Regexp, Array[String, Regexp]] a blacklist of content types which are not allowed to be uploaded # # === Examples # # def content type blacklist # %w(text/json application/json) # end # # Basically the same, but using a Regexp: # # def content type blacklist # [/(text|application)\/json/] # end #
+nil	## # Override this method in your uploader to provide a white list of extensions which # are allowed to be uploaded. Compares the file's extension case insensitive. # Furthermore, not only strings but Regexp are allowed as well. # # When using a Regexp in the white list, `\A` and `\z` are automatically added to # the Regexp expression, also case insensitive. # # === Returns # # [NilClass, String, Regexp, Array[String, Regexp]] a white list of extensions which are allowed to be uploaded # # === Examples # # def extension whitelist # %w(jpg jpeg gif png) # end # # Basically the same, but using a Regexp: # # def extension whitelist # [/jpe?g/, 'gif', 'png'] # end #nil	## # overwrite this to read from a serialized attribute #
+nil	## # overwrite this to write to a serialized attribute #
+String	## # Returns the filename as is, without sanitizing it. # # === Returns # # [String] the unsanitized filename #
+String	## # Returns the filename, sanitized to strip out any evil characters. # # === Returns # # [String] the sanitized filename #
+String	## # Returns the part of the filename before the extension. So if a file is called 'test.jpeg' # this would return 'test' # # === Returns # # [String] the first part of the filename #
+String	## # Returns the file extension # # === Returns # # [String] the extension #
+Integer	## # Returns the file's size. # # === Returns # # [Integer] the file's size in bytes. #
+String	## # Returns the full path to the file. If the file has no path, it will return nil. # # === Returns # # [String, nil] the path where the file is located. #
+String	## # Returns the contents of the file. # # === Returns # # [String] contents of the file #
+Integer	## # Helper to move file to new path. #
+Integer	## # Helper to create copy of file in new path. #
+String	## # Returns the content type of the file. # # === Returns # # [String] the content type of the file #
+String	## # Sets the content type of the file. # # === Returns # # [String] the content type of the file #
+String	# Sanitize the filename, to prevent hacking
+Integer	## # Returns the width of the image. # # === Returns # # [Integer] the image's width in pixels #
+Integer	## # Returns the height of the image. # # === Returns # # [Integer] the image's height in pixels #
+Integer	## # Returns the width of the image in pixels. # # === Returns # # [Integer] the image's width in pixels #
+Integer	## # Returns the height of the image in pixels. # # === Returns # # [Integer] the image's height in pixels #
+Integer	## # Deletes a cache dir #
+nil	## # Deletes a cache dir #
+String	## # Return a temporary authenticated url to a private file, if available # Only supported for AWS, Rackspace, Google, AzureRM and Aliyun providers # # === Returns # # [String] temporary authenticated url # or # [NilClass] no authenticated url available #
+String	## # Lookup value for file content-type header # # === Returns # # [String] value of content-type #
+String	## # Return extension of file # # === Returns # # [String] extension of file or nil if the file has no extension #
+String	## # Read content of file from service # # === Returns # # [String] contents of file
+Integer	## # Return size of file body # # === Returns # # [Integer] size of file body #
+String	## # Return a url to a public file, if available # # === Returns # # [String] public url # or # [NilClass] no public url available #
+String	## # Return url to file, if avaliable # # === Returns # # [String] url # or # [NilClass] no url available #
+String	## # Return file name, if available # # === Returns # # [String] file name # or # [NilClass] no file name available #
+Integer	## # Returns array index of given uploader within currently mounted uploaders #
+String	## # When given a version name as a parameter, will return the url for that version # This also works with nested versions. # When given a query hash as a parameter, will return the url with signature that contains query params # Query hash only works with AWS (S3 storage). # # === Example # # my uploader.url # => /path/to/my/uploader.gif # my uploader.url(:thumb) # => /path/to/my/thumb uploader.gif # my uploader.url(:thumb, :small) # => /path/to/my/thumb small uploader.gif # my uploader.url(:query => {"response-content-disposition" => "attachment"}) # my uploader.url(:version, :sub version, :query => {"response-content-disposition" => "attachment"}) # # === Parameters # # [*args (Symbol)] any number of versions # OR/AND # [Hash] query params # # === Returns # # [String] the location where this file is accessible via a url #
+nil	## # Override this method in your uploader to provide a default url # in case no file has been cached/stored yet. #
+nil	## # Override this method in your uploader to provide a whitelist of files content types # which are allowed to be uploaded. # Not only strings but Regexp are allowed as well. # # === Returns # # [NilClass, String, Regexp, Array[String, Regexp]] a whitelist of content types which are allowed to be uploaded # # === Examples # # def content type whitelist # %w(text/json application/json) # end # # Basically the same, but using a Regexp: # # def content type whitelist # [/(text|application)\/json/] # end #
+nil	## # Override this method in your uploader to provide a black list of extensions which # are prohibited to be uploaded. Compares the file's extension case insensitive. # Furthermore, not only strings but Regexp are allowed as well. # # When using a Regexp in the black list, `\A` and `\z` are automatically added to # the Regexp expression, also case insensitive. # # === Returns # [NilClass, String, Regexp, Array[String, Regexp]] a black list of extensions which are prohibited to be uploaded # # === Examples # # def extension blacklist # %w(swf tiff) # end # # Basically the same, but using a Regexp: # # def extension blacklist # [/swf/, 'tiff'] # end #
+String	## # === Parameters # # [Hash] optional, the query params (only AWS) # # === Returns # # [String] the location where this file is accessible via a url #
+String	## # Returns true if the uploader has been cached # # === Returns # # [Bool] whether the current file is cached #
+String	## # Returns a String which uniquely identifies the currently cached file for later retrieval # # === Returns # # [String] a cache name, in the format TIMEINT-PID-COUNTER-RND/filename.txt #
+String	## # === Returns # # [String] the path where the file is currently located. #
+String	## # Returns a string that uniquely identifies the retrieved or last stored file # # === Returns # # [String] uniquely identifies a file #
+String	## # Read the contents of the file # # === Returns # # [String] contents of the file #
+Integer	## # Fetches the size of the currently stored/cached file # # === Returns # # [Integer] size of the file #
+Integer	## # Return the size of the file when asked for its length # # === Returns # # [Integer] size of the file # # === Note # # This was added because of the way Rails handles length/size validations in 3.0.6 and above. #
+String	## # Read the content type of the file # # === Returns # # [String] content type of the file #
+nil	## # Override this method in your uploader to provide a Range of Size which # are allowed to be uploaded. # === Returns # # [NilClass, Range] a size range which are permitted to be uploaded # # === Examples # # def size range # 3256...5748 # end #
+String	## # Override this in your Uploader to change the filename. # # Be careful using record ids as filenames. If the filename is stored in the database # the record id will be nil when the filename is set. Don't use record ids unless you # understand this limitation. # # Do not use the version name in the filename, as it will prevent versions from being # loaded correctly. # # === Returns # # [String] a filename #
+nil	## # Override this method in your uploader to provide a blacklist of files content types # which are not allowed to be uploaded. # Not only strings but Regexp are allowed as well. # # === Returns # # [NilClass, String, Regexp, Array[String, Regexp]] a blacklist of content types which are not allowed to be uploaded # # === Examples # # def content type blacklist # %w(text/json application/json) # end # # Basically the same, but using a Regexp: # # def content type blacklist # [/(text|application)\/json/] # end #
+nil	## # Override this method in your uploader to provide a white list of extensions which # are allowed to be uploaded. Compares the file's extension case insensitive. # Furthermore, not only strings but Regexp are allowed as well. # # When using a Regexp in the white list, `\A` and `\z` are automatically added to # the Regexp expression, also case insensitive. # # === Returns # # [NilClass, String, Regexp, Array[String, Regexp]] a white list of extensions which are allowed to be uploaded # # === Examples # # def extension whitelist # %w(jpg jpeg gif png) # end # # Basically the same, but using a Regexp: # # def extension whitelist # [/jpe?g/, 'gif', 'png'] # end #

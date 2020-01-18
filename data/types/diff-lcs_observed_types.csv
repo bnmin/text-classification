@@ -1,0 +1,1202 @@
+Class,Method,Parameter Names,Observed Arg Types,Observed Return Type,Source Code,Comments
+[s]Diff::LCS,diff,"seq1, seq2, callbacks, block","seq1 => (Array<%bot> or Array<String> or String)
+seq2 => (Array<%bot> or Array<String> or String)
+callbacks => Class
+block => nil
+",(Array<%bot> or Array<Array<Diff::LCS::Change>> or Array<Array<Diff::LCS::ContextChange>> or Array<Diff::LCS::ContextChange>),"  def diff(seq1, seq2, callbacks = nil, &block) # :yields diff changes:
+    diff_traversal(:diff, seq1, seq2, callbacks || Diff::LCS::DiffCallbacks, &block)
+  end
+","# #diff computes the smallest set of additions and deletions necessary to
+# turn the first sequence into the second, and returns a description of
+# these changes.
+#
+# See Diff::LCS::DiffCallbacks for the default behaviour. An alternate
+# behaviour may be implemented with Diff::LCS::ContextDiffCallbacks. If a
+# Class argument is provided for +callbacks+, #diff will attempt to
+# initialise it. If the +callbacks+ object (possibly initialised) responds
+# to #finish, it will be called.
+"
+[s]Diff::LCS,sdiff,"seq1, seq2, callbacks, block","seq1 => (Array<%bot> or Array<Array<Integer>> or Array<String> or String)
+seq2 => (Array<%bot> or Array<Array<Integer>> or Array<String> or String)
+callbacks => Class
+block => nil
+",(Array<Array<Diff::LCS::Change>> or Array<Array<Diff::LCS::ContextChange>> or Array<Diff::LCS::ContextChange>),"  def sdiff(seq1, seq2, callbacks = nil, &block) #:yields diff changes:
+    diff_traversal(:sdiff, seq1, seq2, callbacks || Diff::LCS::SDiffCallbacks, &block)
+  end
+","# #sdiff computes all necessary components to show two sequences and their
+# minimized differences side by side, just like the Unix utility
+# <em>sdiff</em> does:
+#
+#     old        <     -
+#     same             same
+#     before     |     after
+#     -          >     new
+#
+# See Diff::LCS::SDiffCallbacks for the default behaviour. An alternate
+# behaviour may be implemented with Diff::LCS::ContextDiffCallbacks. If a
+# Class argument is provided for +callbacks+, #diff will attempt to
+# initialise it. If the +callbacks+ object (possibly initialised) responds
+# to #finish, it will be called.
+#
+# Each element of a returned array is a Diff::LCS::ContextChange object,
+# which can be implicitly converted to an array.
+#
+#   Diff::LCS.sdiff(a, b).each do |action, (old_pos, old_element), (new_pos, new_element)|
+#     case action
+#     when '!'
+#       # replace
+#     when '-'
+#       # delete
+#     when '+'
+#       # insert
+#     end
+#   end
+"
+[s]Diff::LCS,traverse_sequences,"seq1, seq2, callbacks","seq1 => (Array<%bot> or Array<String> or String)
+seq2 => (Array<%bot> or Array<String> or String)
+callbacks => Object
+",nil,"  def traverse_sequences(seq1, seq2, callbacks = Diff::LCS::SequenceCallbacks) #:yields change events:
+    callbacks ||= Diff::LCS::SequenceCallbacks
+    matches = Diff::LCS::Internals.lcs(seq1, seq2)
+
+    run_finished_a = run_finished_b = false
+    string = seq1.kind_of?(String)
+
+    a_size = seq1.size
+    b_size = seq2.size
+    ai = bj = 0
+
+    (0..matches.size).each do |i|
+      b_line = matches[i]
+
+      ax = string ? seq1[i, 1] : seq1[i]
+      bx = string ? seq2[bj, 1] : seq2[bj]
+
+      if b_line.nil?
+        unless ax.nil? or (string and ax.empty?)
+          event = Diff::LCS::ContextChange.new('-', i, ax, bj, bx)
+          event = yield event if block_given?
+          callbacks.discard_a(event)
+        end
+      else
+        loop do
+          break unless bj < b_line
+
+          bx = string ? seq2[bj, 1] : seq2[bj]
+          event = Diff::LCS::ContextChange.new('+', i, ax, bj, bx)
+          event = yield event if block_given?
+          callbacks.discard_b(event)
+          bj += 1
+        end
+        bx = string ? seq2[bj, 1] : seq2[bj]
+        event = Diff::LCS::ContextChange.new('=', i, ax, bj, bx)
+        event = yield event if block_given?
+        callbacks.match(event)
+        bj += 1
+      end
+      ai = i
+    end
+    ai += 1
+
+    # The last entry (if any) processed was a match. +ai+ and +bj+ point
+    # just past the last matching lines in their sequences.
+    while (ai < a_size) or (bj < b_size)
+      # last A?
+      if ai == a_size and bj < b_size
+        if callbacks.respond_to?(:finished_a) and !run_finished_a
+          ax = string ? seq1[-1, 1] : seq1[-1]
+          bx = string ? seq2[bj, 1] : seq2[bj]
+          event = Diff::LCS::ContextChange.new('>', (a_size - 1), ax, bj, bx)
+          event = yield event if block_given?
+          callbacks.finished_a(event)
+          run_finished_a = true
+        else
+          ax = string ? seq1[ai, 1] : seq1[ai]
+          loop do
+            bx = string ? seq2[bj, 1] : seq2[bj]
+            event = Diff::LCS::ContextChange.new('+', ai, ax, bj, bx)
+            event = yield event if block_given?
+            callbacks.discard_b(event)
+            bj += 1
+            break unless bj < b_size
+          end
+        end
+      end
+
+      # last B?
+      if bj == b_size and ai < a_size
+        if callbacks.respond_to?(:finished_b) and !run_finished_b
+          ax = string ? seq1[ai, 1] : seq1[ai]
+          bx = string ? seq2[-1, 1] : seq2[-1]
+          event = Diff::LCS::ContextChange.new('<', ai, ax, (b_size - 1), bx)
+          event = yield event if block_given?
+          callbacks.finished_b(event)
+          run_finished_b = true
+        else
+          bx = string ? seq2[bj, 1] : seq2[bj]
+          loop do
+            ax = string ? seq1[ai, 1] : seq1[ai]
+            event = Diff::LCS::ContextChange.new('-', ai, ax, bj, bx)
+            event = yield event if block_given?
+            callbacks.discard_a(event)
+            ai += 1
+            break unless bj < b_size
+          end
+        end
+      end
+
+      if ai < a_size
+        ax = string ? seq1[ai, 1] : seq1[ai]
+        bx = string ? seq2[bj, 1] : seq2[bj]
+        event = Diff::LCS::ContextChange.new('-', ai, ax, bj, bx)
+        event = yield event if block_given?
+        callbacks.discard_a(event)
+        ai += 1
+      end
+
+      next unless bj < b_size
+
+      ax = string ? seq1[ai, 1] : seq1[ai]
+      bx = string ? seq2[bj, 1] : seq2[bj]
+      event = Diff::LCS::ContextChange.new('+', ai, ax, bj, bx)
+      event = yield event if block_given?
+      callbacks.discard_b(event)
+      bj += 1
+    end
+  end
+","# #traverse_sequences is the most general facility provided by this
+# module; #diff and #lcs are implemented as calls to it.
+#
+# The arguments to #traverse_sequences are the two sequences to traverse,
+# and a callback object, like this:
+#
+#   traverse_sequences(seq1, seq2, Diff::LCS::ContextDiffCallbacks.new)
+#
+# == Callback Methods
+#
+# Optional callback methods are <em>emphasized</em>.
+#
+# callbacks#match::               Called when +a+ and +b+ are pointing to
+#                                 common elements in +A+ and +B+.
+# callbacks#discard_a::           Called when +a+ is pointing to an
+#                                 element not in +B+.
+# callbacks#discard_b::           Called when +b+ is pointing to an
+#                                 element not in +A+.
+# <em>callbacks#finished_a</em>:: Called when +a+ has reached the end of
+#                                 sequence +A+.
+# <em>callbacks#finished_b</em>:: Called when +b+ has reached the end of
+#                                 sequence +B+.
+#
+# == Algorithm
+#
+#       a---+
+#           v
+#       A = a b c e h j l m n p
+#       B = b c d e f j k l m r s t
+#           ^
+#       b---+
+#
+# If there are two arrows (+a+ and +b+) pointing to elements of sequences
+# +A+ and +B+, the arrows will initially point to the first elements of
+# their respective sequences. #traverse_sequences will advance the arrows
+# through the sequences one element at a time, calling a method on the
+# user-specified callback object before each advance. It will advance the
+# arrows in such a way that if there are elements <tt>A[i]</tt> and
+# <tt>B[j]</tt> which are both equal and part of the longest common
+# subsequence, there will be some moment during the execution of
+# #traverse_sequences when arrow +a+ is pointing to <tt>A[i]</tt> and
+# arrow +b+ is pointing to <tt>B[j]</tt>. When this happens,
+# #traverse_sequences will call <tt>callbacks#match</tt> and then it will
+# advance both arrows.
+#
+# Otherwise, one of the arrows is pointing to an element of its sequence
+# that is not part of the longest common subsequence. #traverse_sequences
+# will advance that arrow and will call <tt>callbacks#discard_a</tt> or
+# <tt>callbacks#discard_b</tt>, depending on which arrow it advanced. If
+# both arrows point to elements that are not part of the longest common
+# subsequence, then #traverse_sequences will advance one of them and call
+# the appropriate callback, but it is not specified which it will call.
+#
+# The methods for <tt>callbacks#match</tt>, <tt>callbacks#discard_a</tt>,
+# and <tt>callbacks#discard_b</tt> are invoked with an event comprising
+# the action (""="", ""+"", or ""-"", respectively), the indicies +i+ and +j+,
+# and the elements <tt>A[i]</tt> and <tt>B[j]</tt>. Return values are
+# discarded by #traverse_sequences.
+#
+# === End of Sequences
+#
+# If arrow +a+ reaches the end of its sequence before arrow +b+ does,
+# #traverse_sequence will try to call <tt>callbacks#finished_a</tt> with
+# the last index and element of +A+ (<tt>A[-1]</tt>) and the current index
+# and element of +B+ (<tt>B[j]</tt>). If <tt>callbacks#finished_a</tt>
+# does not exist, then <tt>callbacks#discard_b</tt> will be called on each
+# element of +B+ until the end of the sequence is reached (the call will
+# be done with <tt>A[-1]</tt> and <tt>B[j]</tt> for each element).
+#
+# If +b+ reaches the end of +B+ before +a+ reaches the end of +A+,
+# <tt>callbacks#finished_b</tt> will be called with the current index and
+# element of +A+ (<tt>A[i]</tt>) and the last index and element of +B+
+# (<tt>A[-1]</tt>). Again, if <tt>callbacks#finished_b</tt> does not exist
+# on the callback object, then <tt>callbacks#discard_a</tt> will be called
+# on each element of +A+ until the end of the sequence is reached
+# (<tt>A[i]</tt> and <tt>B[-1]</tt>).
+#
+# There is a chance that one additional <tt>callbacks#discard_a</tt> or
+# <tt>callbacks#discard_b</tt> will be called after the end of the
+# sequence is reached, if +a+ has not yet reached the end of +A+ or +b+
+# has not yet reached the end of +B+.
+"
+[s]Diff::LCS,traverse_balanced,"seq1, seq2, callbacks","seq1 => (Array<%bot> or Array<Array<Integer>> or Array<String> or String)
+seq2 => (Array<%bot> or Array<Array<Integer>> or Array<String> or String)
+callbacks => Object
+",nil,"  def traverse_balanced(seq1, seq2, callbacks = Diff::LCS::BalancedCallbacks)
+    matches = Diff::LCS::Internals.lcs(seq1, seq2)
+    a_size = seq1.size
+    b_size = seq2.size
+    ai = bj = mb = 0
+    ma = -1
+    string = seq1.kind_of?(String)
+
+    # Process all the lines in the match vector.
+    loop do
+      # Find next match indices +ma+ and +mb+
+      loop do
+        ma += 1
+        break unless ma < matches.size and matches[ma].nil?
+      end
+
+      break if ma >= matches.size # end of matches?
+
+      mb = matches[ma]
+
+      # Change(seq2)
+      while (ai < ma) or (bj < mb)
+        ax = string ? seq1[ai, 1] : seq1[ai]
+        bx = string ? seq2[bj, 1] : seq2[bj]
+
+        case [(ai < ma), (bj < mb)]
+        when [true, true]
+          if callbacks.respond_to?(:change)
+            event = Diff::LCS::ContextChange.new('!', ai, ax, bj, bx)
+            event = yield event if block_given?
+            callbacks.change(event)
+            ai += 1
+          else
+            event = Diff::LCS::ContextChange.new('-', ai, ax, bj, bx)
+            event = yield event if block_given?
+            callbacks.discard_a(event)
+            ai += 1
+            ax = string ? seq1[ai, 1] : seq1[ai]
+            event = Diff::LCS::ContextChange.new('+', ai, ax, bj, bx)
+            event = yield event if block_given?
+            callbacks.discard_b(event)
+          end
+
+          bj += 1
+        when [true, false]
+          event = Diff::LCS::ContextChange.new('-', ai, ax, bj, bx)
+          event = yield event if block_given?
+          callbacks.discard_a(event)
+          ai += 1
+        when [false, true]
+          event = Diff::LCS::ContextChange.new('+', ai, ax, bj, bx)
+          event = yield event if block_given?
+          callbacks.discard_b(event)
+          bj += 1
+        end
+      end
+
+      # Match
+      ax = string ? seq1[ai, 1] : seq1[ai]
+      bx = string ? seq2[bj, 1] : seq2[bj]
+      event = Diff::LCS::ContextChange.new('=', ai, ax, bj, bx)
+      event = yield event if block_given?
+      callbacks.match(event)
+      ai += 1
+      bj += 1
+    end
+
+    while (ai < a_size) or (bj < b_size)
+      ax = string ? seq1[ai, 1] : seq1[ai]
+      bx = string ? seq2[bj, 1] : seq2[bj]
+
+      case [(ai < a_size), (bj < b_size)]
+      when [true, true]
+        if callbacks.respond_to?(:change)
+          event = Diff::LCS::ContextChange.new('!', ai, ax, bj, bx)
+          event = yield event if block_given?
+          callbacks.change(event)
+          ai += 1
+        else
+          event = Diff::LCS::ContextChange.new('-', ai, ax, bj, bx)
+          event = yield event if block_given?
+          callbacks.discard_a(event)
+          ai += 1
+          ax = string ? seq1[ai, 1] : seq1[ai]
+          event = Diff::LCS::ContextChange.new('+', ai, ax, bj, bx)
+          event = yield event if block_given?
+          callbacks.discard_b(event)
+        end
+
+        bj += 1
+      when [true, false]
+        event = Diff::LCS::ContextChange.new('-', ai, ax, bj, bx)
+        event = yield event if block_given?
+        callbacks.discard_a(event)
+        ai += 1
+      when [false, true]
+        event = Diff::LCS::ContextChange.new('+', ai, ax, bj, bx)
+        event = yield event if block_given?
+        callbacks.discard_b(event)
+        bj += 1
+      end
+    end
+  end
+","# #traverse_balanced is an alternative to #traverse_sequences. It uses a
+# different algorithm to iterate through the entries in the computed
+# longest common subsequence. Instead of viewing the changes as insertions
+# or deletions from one of the sequences, #traverse_balanced will report
+# <em>changes</em> between the sequences.
+#
+# The arguments to #traverse_balanced are the two sequences to traverse
+# and a callback object, like this:
+#
+#   traverse_balanced(seq1, seq2, Diff::LCS::ContextDiffCallbacks.new)
+#
+# #sdiff is implemented with #traverse_balanced.
+#
+# == Callback Methods
+#
+# Optional callback methods are <em>emphasized</em>.
+#
+# callbacks#match::               Called when +a+ and +b+ are pointing to
+#                                 common elements in +A+ and +B+.
+# callbacks#discard_a::           Called when +a+ is pointing to an
+#                                 element not in +B+.
+# callbacks#discard_b::           Called when +b+ is pointing to an
+#                                 element not in +A+.
+# <em>callbacks#change</em>::     Called when +a+ and +b+ are pointing to
+#                                 the same relative position, but
+#                                 <tt>A[a]</tt> and <tt>B[b]</tt> are not
+#                                 the same; a <em>change</em> has
+#                                 occurred.
+#
+# #traverse_balanced might be a bit slower than #traverse_sequences,
+# noticable only while processing huge amounts of data.
+#
+# == Algorithm
+#
+#       a---+
+#           v
+#       A = a b c e h j l m n p
+#       B = b c d e f j k l m r s t
+#           ^
+#       b---+
+#
+# === Matches
+#
+# If there are two arrows (+a+ and +b+) pointing to elements of sequences
+# +A+ and +B+, the arrows will initially point to the first elements of
+# their respective sequences. #traverse_sequences will advance the arrows
+# through the sequences one element at a time, calling a method on the
+# user-specified callback object before each advance. It will advance the
+# arrows in such a way that if there are elements <tt>A[i]</tt> and
+# <tt>B[j]</tt> which are both equal and part of the longest common
+# subsequence, there will be some moment during the execution of
+# #traverse_sequences when arrow +a+ is pointing to <tt>A[i]</tt> and
+# arrow +b+ is pointing to <tt>B[j]</tt>. When this happens,
+# #traverse_sequences will call <tt>callbacks#match</tt> and then it will
+# advance both arrows.
+#
+# === Discards
+#
+# Otherwise, one of the arrows is pointing to an element of its sequence
+# that is not part of the longest common subsequence. #traverse_sequences
+# will advance that arrow and will call <tt>callbacks#discard_a</tt> or
+# <tt>callbacks#discard_b</tt>, depending on which arrow it advanced.
+#
+# === Changes
+#
+# If both +a+ and +b+ point to elements that are not part of the longest
+# common subsequence, then #traverse_sequences will try to call
+# <tt>callbacks#change</tt> and advance both arrows. If
+# <tt>callbacks#change</tt> is not implemented, then
+# <tt>callbacks#discard_a</tt> and <tt>callbacks#discard_b</tt> will be
+# called in turn.
+#
+# The methods for <tt>callbacks#match</tt>, <tt>callbacks#discard_a</tt>,
+# <tt>callbacks#discard_b</tt>, and <tt>callbacks#change</tt> are invoked
+# with an event comprising the action (""="", ""+"", ""-"", or ""!"",
+# respectively), the indicies +i+ and +j+, and the elements
+# <tt>A[i]</tt> and <tt>B[j]</tt>. Return values are discarded by
+# #traverse_balanced.
+#
+# === Context
+# Note that +i+ and +j+ may not be the same index position, even if +a+
+# and +b+ are considered to be pointing to matching or changed elements.
+"
+[s]Diff::LCS,patch,"src, patchset, direction","src => (Array<String> or String)
+patchset => (Array<%bot> or Array<Array<Diff::LCS::Change>> or Array<Array<Diff::LCS::ContextChange>> or Array<Diff::LCS::ContextChange>)
+direction => Symbol
+",(Array<String> or String),"  def patch(src, patchset, direction = nil)
+    # Normalize the patchset.
+    has_changes, patchset = Diff::LCS::Internals.analyze_patchset(patchset)
+
+    return src.respond_to?(:dup) ? src.dup : src unless has_changes
+
+    string = src.kind_of?(String)
+    # Start with a new empty type of the source's class
+    res = src.class.new
+
+    direction ||= Diff::LCS::Internals.intuit_diff_direction(src, patchset)
+
+    ai = bj = 0
+
+    patch_map = PATCH_MAP[direction]
+
+    patchset.each do |change|
+      # Both Change and ContextChange support #action
+      action = patch_map[change.action]
+
+      case change
+      when Diff::LCS::ContextChange
+        case direction
+        when :patch
+          el = change.new_element
+          op = change.old_position
+          np = change.new_position
+        when :unpatch
+          el = change.old_element
+          op = change.new_position
+          np = change.old_position
+        end
+
+        case action
+        when '-' # Remove details from the old string
+          while ai < op
+            res << (string ? src[ai, 1] : src[ai])
+            ai += 1
+            bj += 1
+          end
+          ai += 1
+        when '+'
+          while bj < np
+            res << (string ? src[ai, 1] : src[ai])
+            ai += 1
+            bj += 1
+          end
+
+          res << el
+          bj += 1
+        when '='
+          # This only appears in sdiff output with the SDiff callback.
+          # Therefore, we only need to worry about dealing with a single
+          # element.
+          res << el
+
+          ai += 1
+          bj += 1
+        when '!'
+          while ai < op
+            res << (string ? src[ai, 1] : src[ai])
+            ai += 1
+            bj += 1
+          end
+
+          bj += 1
+          ai += 1
+
+          res << el
+        end
+      when Diff::LCS::Change
+        case action
+        when '-'
+          while ai < change.position
+            res << (string ? src[ai, 1] : src[ai])
+            ai += 1
+            bj += 1
+          end
+          ai += 1
+        when '+'
+          while bj < change.position
+            res << (string ? src[ai, 1] : src[ai])
+            ai += 1
+            bj += 1
+          end
+
+          bj += 1
+
+          res << change.element
+        end
+      end
+    end
+
+    while ai < src.size
+      res << (string ? src[ai, 1] : src[ai])
+      ai += 1
+      bj += 1
+    end
+
+    res
+  end
+","# Applies a +patchset+ to the sequence +src+ according to the +direction+
+# (<tt>:patch</tt> or <tt>:unpatch</tt>), producing a new sequence.
+#
+# If the +direction+ is not specified, Diff::LCS::patch will attempt to
+# discover the direction of the +patchset+.
+#
+# A +patchset+ can be considered to apply forward (<tt>:patch</tt>) if the
+# following expression is true:
+#
+#     patch(s1, diff(s1, s2)) -> s2
+#
+# A +patchset+ can be considered to apply backward (<tt>:unpatch</tt>) if
+# the following expression is true:
+#
+#     patch(s2, diff(s1, s2)) -> s1
+#
+# If the +patchset+ contains no changes, the +src+ value will be returned
+# as either <tt>src.dup</tt> or +src+. A +patchset+ can be deemed as
+# having no changes if the following predicate returns true:
+#
+#     patchset.empty? or
+#       patchset.flatten(1).all? { |change| change.unchanged? }
+#
+# === Patchsets
+#
+# A +patchset+ is always an enumerable sequence of changes, hunks of
+# changes, or a mix of the two. A hunk of changes is an enumerable
+# sequence of changes:
+#
+#     [ # patchset
+#       # change
+#       [ # hunk
+#         # change
+#       ]
+#     ]
+#
+# The +patch+ method accepts <tt>patchset</tt>s that are enumerable
+# sequences containing either Diff::LCS::Change objects (or a subclass) or
+# the array representations of those objects. Prior to application, array
+# representations of Diff::LCS::Change objects will be reified.
+"
+[s]Diff::LCS,unpatch!,"src, patchset","src => Array<String>
+patchset => (Array<Array<Diff::LCS::Change>> or Array<Array<Diff::LCS::ContextChange>> or Array<Diff::LCS::ContextChange>)
+",Array<String>,"  def unpatch!(src, patchset)
+    patch(src, patchset, :unpatch)
+  end
+","# Given a set of patchset, convert the current version to the prior
+# version. Does no auto-discovery.
+"
+[s]Diff::LCS,patch!,"src, patchset","src => Array<String>
+patchset => (Array<Array<Diff::LCS::Change>> or Array<Array<Diff::LCS::ContextChange>> or Array<Diff::LCS::ContextChange>)
+",Array<String>,"  def patch!(src, patchset)
+    patch(src, patchset, :patch)
+  end
+","# Given a set of patchset, convert the current version to the next
+# version. Does no auto-discovery.
+"
+Diff::LCS::Change,initialize,args,"args => Array<RDL::Type::NominalType>
+",nil,"  def initialize(*args)
+    @action, @position, @element = *args
+
+    fail ""Invalid Change Action '#{@action}'"" unless Diff::LCS::Change.valid_action?(@action)
+    fail 'Invalid Position Type' unless @position.kind_of? IntClass
+  end
+",""
+Diff::LCS::Change,==,other,"other => Diff::LCS::Change
+",true,"  def ==(other)
+    (self.class == other.class) and
+      (action == other.action) and
+      (position == other.position) and
+      (element == other.element)
+  end
+",""
+Diff::LCS::Change,adding?,"","",(false or true),"  def adding?
+    @action == '+'
+  end
+",""
+Diff::LCS::Change,deleting?,"","",(false or true),"  def deleting?
+    @action == '-'
+  end
+",""
+Diff::LCS::Change,unchanged?,"","",(false or true),"  def unchanged?
+    @action == '='
+  end
+",""
+Diff::LCS::Change,changed?,"","",(false or true),"  def changed?
+    @action == '!'
+  end
+",""
+Diff::LCS::Change,finished_a?,"","",(false or true),"  def finished_a?
+    @action == '>'
+  end
+",""
+Diff::LCS::Change,finished_b?,"","",(false or true),"  def finished_b?
+    @action == '<'
+  end
+",""
+Diff::LCS::Block,initialize,chunk,"chunk => Array<Diff::LCS::Change>
+",Array<Diff::LCS::Change>,"  def initialize(chunk)
+    @changes = []
+    @insert = []
+    @remove = []
+
+    chunk.each do |item|
+      @changes << item
+      @remove << item if item.deleting?
+      @insert << item if item.adding?
+    end
+  end
+",""
+Diff::LCS::Block,diff_size,"","",Integer,"  def diff_size
+    @insert.size - @remove.size
+  end
+",""
+Diff::LCS::Block,op,"","",String,"  def op
+    case [@remove.empty?, @insert.empty?]
+    when [false, false]
+      '!'
+    when [false, true]
+      '-'
+    when [true, false]
+      '+'
+    else # [true, true]
+      '^'
+    end
+  end
+",""
+Diff::LCS::Hunk,initialize,"data_old, data_new, piece, flag_context, file_length_difference","data_old => (Array<%bot> or Array<String>)
+data_new => Array<String>
+piece => Array<Diff::LCS::Change>
+flag_context => Integer
+file_length_difference => Integer
+",Integer,"  def initialize(data_old, data_new, piece, flag_context, file_length_difference)
+    # At first, a hunk will have just one Block in it
+    @blocks = [Diff::LCS::Block.new(piece)]
+    if String.method_defined?(:encoding)
+      @preferred_data_encoding = data_old.fetch(0, data_new.fetch(0, '')).encoding
+    end
+    @data_old = data_old
+    @data_new = data_new
+
+    before = after = file_length_difference
+    after += @blocks[0].diff_size
+    @file_length_difference = after # The caller must get this manually
+    @max_diff_size = @blocks.lazy.map { |e| e.diff_size }.max
+
+    # Save the start & end of each array. If the array doesn't exist (e.g.,
+    # we're only adding items in this block), then figure out the line
+    # number based on the line number of the other file and the current
+    # difference in file lengths.
+    if @blocks[0].remove.empty?
+      a1 = a2 = nil
+    else
+      a1 = @blocks[0].remove[0].position
+      a2 = @blocks[0].remove[-1].position
+    end
+
+    if @blocks[0].insert.empty?
+      b1 = b2 = nil
+    else
+      b1 = @blocks[0].insert[0].position
+      b2 = @blocks[0].insert[-1].position
+    end
+
+    @start_old = a1 || (b1 - before)
+    @start_new = b1 || (a1 + before)
+    @end_old   = a2 || (b2 - after)
+    @end_new   = b2 || (a2 + after)
+
+    self.flag_context = flag_context
+  end
+","# Create a hunk using references to both the old and new data, as well as
+# the piece of data.
+"
+Diff::LCS::Hunk,flag_context=,context,"context => Integer
+",Integer,"  def flag_context=(context) #:nodoc: # rubocop:disable Lint/DuplicateMethods
+    return if context.nil? or context.zero?
+
+    add_start = context > @start_old ? @start_old : context
+    @start_old -= add_start
+    @start_new -= add_start
+
+    add_end =
+      if (@end_old + context) > @data_old.size
+        @data_old.size - @end_old
+      else
+        context
+      end
+
+    add_end = @max_diff_size if add_end > @max_diff_size
+
+    @end_old += add_end
+    @end_new += add_end
+  end
+","#undef :flag_context=
+"
+Diff::LCS::Hunk,diff,format,"format => Symbol
+",String,"  def diff(format)
+    case format
+    when :old
+      old_diff
+    when :unified
+      unified_diff
+    when :context
+      context_diff
+    when :ed
+      self
+    when :reverse_ed, :ed_finish
+      ed_diff(format)
+    else
+      fail ""Unknown diff format #{format}.""
+    end
+  end
+","# Returns a diff string based on a format.
+"
+Diff::LCS::Hunk,old_diff,"","",String,"  def old_diff
+    warn 'Expecting only one block in an old diff hunk!' if @blocks.size > 1
+    op_act = { '+' => 'a', '-' => 'd', '!' => 'c' }
+
+    block = @blocks[0]
+
+    # Calculate item number range. Old diff range is just like a context
+    # diff range, except the ranges are on one line with the action between
+    # them.
+    s = encode(""#{context_range(:old)}#{op_act[block.op]}#{context_range(:new)}\n"")
+    # If removing anything, just print out all the remove lines in the hunk
+    # which is just all the remove lines in the block.
+    unless block.remove.empty?
+      @data_old[@start_old..@end_old].each { |e| s << encode('< ') + e + encode(""\n"") }
+    end
+
+    s << encode(""---\n"") if block.op == '!'
+
+    unless block.insert.empty?
+      @data_new[@start_new..@end_new].each { |e| s << encode('> ') + e + encode(""\n"") }
+    end
+
+    s
+  end
+","# Note that an old diff can't have any context. Therefore, we know that
+# there's only one block in the hunk.
+"
+Diff::LCS::Hunk,unified_diff,"","",String,"  def unified_diff
+    # Calculate item number range.
+    s = encode(""@@ -#{unified_range(:old)} +#{unified_range(:new)} @@\n"")
+
+    # Outlist starts containing the hunk of the old file. Removing an item
+    # just means putting a '-' in front of it. Inserting an item requires
+    # getting it from the new file and splicing it in. We splice in
+    # +num_added+ items. Remove blocks use +num_added+ because splicing
+    # changed the length of outlist.
+    #
+    # We remove +num_removed+ items. Insert blocks use +num_removed+
+    # because their item numbers -- corresponding to positions in the NEW
+    # file -- don't take removed items into account.
+    lo, hi, num_added, num_removed = @start_old, @end_old, 0, 0
+
+    outlist = @data_old[lo..hi].map { |e| e.insert(0, encode(' ')) }
+
+    @blocks.each do |block|
+      block.remove.each do |item|
+        op     = item.action.to_s # -
+        offset = item.position - lo + num_added
+        outlist[offset][0, 1] = encode(op)
+        num_removed += 1
+      end
+      block.insert.each do |item|
+        op     = item.action.to_s # +
+        offset = item.position - @start_new + num_removed
+        outlist[offset, 0] = encode(op) + @data_new[item.position]
+        num_added += 1
+      end
+    end
+
+    s << outlist.join(encode(""\n""))
+  end
+",""
+Diff::LCS::Hunk,context_diff,"","",String,"  def context_diff
+    s = encode(""***************\n"")
+    s << encode(""*** #{context_range(:old)} ****\n"")
+    r = context_range(:new)
+
+    # Print out file 1 part for each block in context diff format if there
+    # are any blocks that remove items
+    lo, hi = @start_old, @end_old
+    removes = @blocks.reject { |e| e.remove.empty? }
+    if removes
+      outlist = @data_old[lo..hi].map { |e| e.insert(0, encode(' ')) }
+
+      removes.each do |block|
+        block.remove.each do |item|
+          outlist[item.position - lo].insert(0, encode(block.op)) # - or !
+        end
+      end
+      s << outlist.join(""\n"")
+    end
+
+    s << encode(""\n--- #{r} ----\n"")
+    lo, hi = @start_new, @end_new
+    inserts = @blocks.reject { |e| e.insert.empty? }
+    if inserts
+      outlist = @data_new[lo..hi].collect { |e| e.insert(0, encode(' ')) }
+      inserts.each do |block|
+        block.insert.each do |item|
+          outlist[item.position - lo].insert(0, encode(block.op)) # - or !
+        end
+      end
+      s << outlist.join(""\n"")
+    end
+    s
+  end
+",""
+Diff::LCS::Hunk,ed_diff,format,"format => Symbol
+",String,"  def ed_diff(format)
+    op_act = { '+' => 'a', '-' => 'd', '!' => 'c' }
+    warn 'Expecting only one block in an old diff hunk!' if @blocks.size > 1
+
+    s =
+      if format == :reverse_ed
+        encode(""#{op_act[@blocks[0].op]}#{context_range(:old)}\n"")
+      else
+        encode(""#{context_range(:old, ' ')}#{op_act[@blocks[0].op]}\n"")
+      end
+
+    unless @blocks[0].insert.empty?
+      @data_new[@start_new..@end_new].each do |e| s << e + encode(""\n"") end
+      s << encode("".\n"")
+    end
+    s
+  end
+",""
+Diff::LCS::Hunk,context_range,"mode, op","mode => Symbol
+op => String
+",String,"  def context_range(mode, op = ',') # rubocop:disable Naming/UncommunicativeMethodParamName
+    case mode
+    when :old
+      s, e = (@start_old + 1), (@end_old + 1)
+    when :new
+      s, e = (@start_new + 1), (@end_new + 1)
+    end
+
+    s < e ? ""#{s}#{op}#{e}"" : e.to_s
+  end
+","# Generate a range of item numbers to print. Only print 1 number if the
+# range has only one item in it. Otherwise, it's 'start,end'
+"
+Diff::LCS::Hunk,unified_range,mode,"mode => Symbol
+",String,"  def unified_range(mode)
+    case mode
+    when :old
+      s, e = (@start_old + 1), (@end_old + 1)
+    when :new
+      s, e = (@start_new + 1), (@end_new + 1)
+    end
+
+    length = e - s + 1
+    first = length < 2 ? e : s # ""strange, but correct""
+    length == 1 ? first.to_s : ""#{first},#{length}""
+  end
+","# Generate a range of item numbers to print for unified diff. Print number
+# where block starts, followed by number of lines in the block
+# (don't print number of lines if it's 1)
+"
+[s]Diff::LCS,diff_traversal,"method, seq1, seq2, callbacks, block","method => Symbol
+seq1 => (Array<%bot> or Array<Array<Integer>> or Array<String> or String)
+seq2 => (Array<%bot> or Array<Array<Integer>> or Array<String> or String)
+callbacks => Class
+block => nil
+",(Array<%bot> or Array<Array<Diff::LCS::Change>> or Array<Array<Diff::LCS::ContextChange>> or Array<Diff::LCS::ContextChange>),"  def diff_traversal(method, seq1, seq2, callbacks, &block)
+    callbacks = callbacks_for(callbacks)
+    case method
+    when :diff
+      traverse_sequences(seq1, seq2, callbacks)
+    when :sdiff
+      traverse_balanced(seq1, seq2, callbacks)
+    end
+    callbacks.finish if callbacks.respond_to? :finish
+
+    if block
+      callbacks.diffs.map do |hunk|
+        if hunk.kind_of? Array
+          hunk.map { |hunk_block| block[hunk_block] }
+        else
+          block[hunk]
+        end
+      end
+    else
+      callbacks.diffs
+    end
+  end
+",""
+[s]Diff::LCS::Internals,lcs,"a, b","a => (Array<%bot> or Array<Array<Integer>> or Array<String> or String)
+b => (Array<%bot> or Array<Array<Integer>> or Array<String> or String)
+",(Array<%bot> or Array<Integer>),"  def lcs(a, b)
+    a_start = b_start = 0
+    a_finish = a.size - 1
+    b_finish = b.size - 1
+    vector = []
+
+    # Prune off any common elements at the beginning...
+    while (a_start <= a_finish) and (b_start <= b_finish) and (a[a_start] == b[b_start])
+      vector[a_start] = b_start
+      a_start += 1
+      b_start += 1
+    end
+    b_start = a_start
+
+    # Now the end...
+    while (a_start <= a_finish) and (b_start <= b_finish) and (a[a_finish] == b[b_finish])
+      vector[a_finish] = b_finish
+      a_finish -= 1
+      b_finish -= 1
+    end
+
+    # Now, compute the equivalence classes of positions of elements.
+    b_matches = position_hash(b, b_start..b_finish)
+
+    thresh = []
+    links  = []
+    string = a.kind_of?(String)
+
+    (a_start..a_finish).each do |i|
+      ai = string ? a[i, 1] : a[i]
+      bm = b_matches[ai]
+      k = nil
+      bm.reverse_each do |j|
+        if k and (thresh[k] > j) and (thresh[k - 1] < j)
+          thresh[k] = j
+        else
+          k = replace_next_larger(thresh, j, k)
+        end
+        links[k] = [k.positive? ? links[k - 1] : nil, i, j] unless k.nil?
+      end
+    end
+
+    unless thresh.empty?
+      link = links[thresh.size - 1]
+      until link.nil?
+        vector[link[1]] = link[2]
+        link = link[0]
+      end
+    end
+
+    vector
+  end
+","# Compute the longest common subsequence between the sequenced
+# Enumerables +a+ and +b+. The result is an array whose contents is such
+# that
+#
+#     result = Diff::LCS::Internals.lcs(a, b)
+#     result.each_with_index do |e, i|
+#       assert_equal(a[i], b[e]) unless e.nil?
+#     end
+"
+[s]Diff::LCS::Internals,analyze_patchset,"patchset, depth","patchset => (Array<%bot> or Array<Array<Diff::LCS::Change>> or Array<Array<Diff::LCS::ContextChange>> or Array<Diff::LCS::Change> or Array<Diff::LCS::ContextChange>)
+depth => Integer
+",(Array<(Array<%bot> or false)> or Array<(Array<Diff::LCS::Change> or true)> or Array<(Array<Diff::LCS::ContextChange> or false)> or Array<(Array<Diff::LCS::ContextChange> or true)>),"  def analyze_patchset(patchset, depth = 0)
+    fail 'Patchset too complex' if depth > 1
+
+    has_changes = false
+    new_patchset = []
+
+    # Format:
+    # [ # patchset
+    #   # hunk (change)
+    #   [ # hunk
+    #     # change
+    #   ]
+    # ]
+
+    patchset.each do |hunk|
+      case hunk
+      when Diff::LCS::Change
+        has_changes ||= !hunk.unchanged?
+        new_patchset << hunk
+      when Array
+        # Detect if the 'hunk' is actually an array-format change object.
+        if Diff::LCS::Change.valid_action? hunk[0]
+          hunk = Diff::LCS::Change.from_a(hunk)
+          has_changes ||= !hunk.unchanged?
+          new_patchset << hunk
+        else
+          with_changes, hunk = analyze_patchset(hunk, depth + 1)
+          has_changes ||= with_changes
+          new_patchset.concat(hunk)
+        end
+      else
+        fail ArgumentError, ""Cannot normalise a hunk of class #{hunk.class}.""
+      end
+    end
+
+    [has_changes, new_patchset]
+  end
+","# This method will analyze the provided patchset to provide a single-pass
+# normalization (conversion of the array form of Diff::LCS::Change objects to
+# the object form of same) and detection of whether the patchset represents
+# changes to be made.
+"
+[s]Diff::LCS::Internals,intuit_diff_direction,"src, patchset, limit","src => (Array<String> or String)
+patchset => (Array<Diff::LCS::Change> or Array<Diff::LCS::ContextChange>)
+limit => nil
+",Symbol,"  def intuit_diff_direction(src, patchset, limit = nil)
+    string = src.kind_of?(String)
+    count = left_match = left_miss = right_match = right_miss = 0
+
+    patchset.each do |change|
+      count += 1
+
+      case change
+      when Diff::LCS::ContextChange
+        le = string ? src[change.old_position, 1] : src[change.old_position]
+        re = string ? src[change.new_position, 1] : src[change.new_position]
+
+        case change.action
+        when '-' # Remove details from the old string
+          if le == change.old_element
+            left_match += 1
+          else
+            left_miss += 1
+          end
+        when '+'
+          if re == change.new_element
+            right_match += 1
+          else
+            right_miss += 1
+          end
+        when '='
+          left_miss += 1 if le != change.old_element
+          right_miss += 1 if re != change.new_element
+        when '!'
+          if le == change.old_element
+            left_match += 1
+          elsif re == change.new_element
+            right_match += 1
+          else
+            left_miss += 1
+            right_miss += 1
+          end
+        end
+      when Diff::LCS::Change
+        # With a simplistic change, we can't tell the difference between
+        # the left and right on '!' actions, so we ignore those. On '='
+        # actions, if there's a miss, we miss both left and right.
+        element = string ? src[change.position, 1] : src[change.position]
+
+        case change.action
+        when '-'
+          if element == change.element
+            left_match += 1
+          else
+            left_miss += 1
+          end
+        when '+'
+          if element == change.element
+            right_match += 1
+          else
+            right_miss += 1
+          end
+        when '='
+          if element != change.element
+            left_miss += 1
+            right_miss += 1
+          end
+        end
+      end
+
+      break if !limit.nil? && (count > limit)
+    end
+
+    no_left = left_match.zero? && left_miss.positive?
+    no_right = right_match.zero? && right_miss.positive?
+
+    case [no_left, no_right]
+    when [false, true]
+      :patch
+    when [true, false]
+      :unpatch
+    else
+      case left_match <=> right_match
+      when 1
+        if left_miss.zero?
+          :patch
+        else
+          :unpatch
+        end
+      when -1
+        if right_miss.zero?
+          :unpatch
+        else
+          :patch
+        end
+      else
+        fail ""The provided patchset does not appear to apply to the provided \
+enumerable as either source or destination value.""
+      end
+    end
+  end
+","# Examine the patchset and the source to see in which direction the
+# patch should be applied.
+#
+# WARNING: By default, this examines the whole patch, so this could take
+# some time. This also works better with Diff::LCS::ContextChange or
+# Diff::LCS::Change as its source, as an array will cause the creation
+# of one of the above.
+"
+[s]Diff::LCS::Internals,replace_next_larger,"enum, value, last_index","enum => Array<Integer>
+value => Integer
+last_index => Integer
+",Integer,"  def replace_next_larger(enum, value, last_index = nil)
+    # Off the end?
+    if enum.empty? or (value > enum[-1])
+      enum << value
+      return enum.size - 1
+    end
+
+    # Binary search for the insertion point
+    last_index ||= enum.size
+    first_index = 0
+    while first_index <= last_index
+      i = (first_index + last_index) >> 1
+
+      found = enum[i]
+
+      return nil if value == found
+
+      if value > found
+        first_index = i + 1
+      else
+        last_index = i - 1
+      end
+    end
+
+    # The insertion point is in first_index; overwrite the next larger
+    # value.
+    enum[first_index] = value
+    first_index
+  end
+","# Find the place at which +value+ would normally be inserted into the
+# Enumerable. If that place is already occupied by +value+, do nothing
+# and return +nil+. If the place does not exist (i.e., it is off the end
+# of the Enumerable), add it to the end. Otherwise, replace the element
+# at that point with +value+. It is assumed that the Enumerable's values
+# are numeric.
+#
+# This operation preserves the sort order.
+"
+[s]Diff::LCS::Internals,position_hash,"enum, interval","enum => (Array<%bot> or Array<Array<Integer>> or Array<String> or String)
+interval => Range
+","(Hash<%bot, %bot> or Hash<Array<Integer>, Array<Integer>> or Hash<String, Array<Integer>>)","  def position_hash(enum, interval)
+    string = enum.kind_of?(String)
+    hash = Hash.new { |h, k| h[k] = [] }
+    interval.each do |i|
+      k = string ? enum[i, 1] : enum[i]
+      hash[k] << i
+    end
+    hash
+  end
+","# Returns a hash mapping each element of an Enumerable to the set of
+# positions it occupies in the Enumerable, optionally restricted to the
+# elements specified in the range of indexes specified by +interval+.
+"

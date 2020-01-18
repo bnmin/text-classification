@@ -1,0 +1,2449 @@
+Class,Method,Parameter Names,Observed Arg Types,Observed Return Type,Source Code,Comments
+EventMachine::FileWatch,receive_data,data,"data => String
+",true,"    def receive_data(data)
+      case data
+      when Cmodified
+        file_modified
+      when Cdeleted
+        file_deleted
+      when Cmoved
+        file_moved
+      end
+    end
+","# @private
+"
+EventMachine::FileWatch,path,"","",String,"    def path
+      @path
+    end
+","# Returns the path that is being monitored.
+#
+# @note Current implementation does not pick up on the new filename after a rename occurs.
+#
+# @return [String]
+# @see EventMachine.watch_file
+"
+EventMachine::IOStreamer,initialize,"connection, io, opts","connection => TestIOStreamer::StreamServer
+io => StringIO
+opts => Hash<%bot, %bot>
+",nil,"    def initialize(connection, io, opts = {})
+      @connection = connection
+      @io = io
+      @http_chunks = opts[:http_chunks]
+
+      @buff = String.new
+      @io.binmode if @io.respond_to?(:binmode)
+      stream_one_chunk
+    end
+","# @param [EventMachine::Connection] connection
+# @param [IO] io Data source
+#
+# @option opts [Boolean] :http_chunks (false) Use HTTP 1.1 style chunked-encoding semantics.
+"
+EventMachine::IOStreamer,stream_one_chunk,"","",nil,"    def stream_one_chunk
+      loop do
+        if @io.eof?
+          @connection.send_data ""0\r\n\r\n"" if @http_chunks
+          succeed
+          break
+        end
+
+        if @connection.respond_to?(:get_outbound_data_size) && (@connection.get_outbound_data_size > FileStreamer::BackpressureLevel)
+          EventMachine::next_tick { stream_one_chunk }
+          break
+        end
+
+        if @io.read(CHUNK_SIZE, @buff)
+          @connection.send_data(""#{@buff.length.to_s(16)}\r\n"") if @http_chunks
+          @connection.send_data(@buff)
+          @connection.send_data(""\r\n"") if @http_chunks
+        end
+      end
+    end
+","# Used internally to stream one chunk at a time over multiple reactor ticks
+# @private
+"
+EventMachine::Pool,initialize,"","",nil,"    def initialize
+      @resources = EM::Queue.new
+      @removed = []
+      @contents = []
+      @on_error = nil
+    end
+",""
+EventMachine::Pool,add,resource,"resource => Symbol
+",nil,"    def add resource
+      @contents << resource
+      requeue resource
+    end
+",""
+EventMachine::Pool,remove,resource,"resource => Symbol
+",Array<Symbol>,"    def remove resource
+      @contents.delete resource
+      @removed << resource
+    end
+",""
+EventMachine::Pool,contents,"","",(Array<%bot> or Array<Symbol>),"    def contents
+      @contents.dup
+    end
+","# Returns a list for introspection purposes only. You should *NEVER* call
+# modification or work oriented methods on objects in this list. A good
+# example use case is periodic statistics collection against a set of
+# connection resources.
+#
+# @example
+#   pool.contents.inject(0) { |sum, connection| connection.num_bytes }
+"
+EventMachine::Pool,on_error,"a, b","a => Array<%bot>
+b => nil
+",Proc,"    def on_error *a, &b
+      @on_error = EM::Callback(*a, &b)
+    end
+","# Define a default catch-all for when the deferrables returned by work
+# blocks enter a failed state. By default all that happens is that the
+# resource is returned to the pool. If on_error is defined, this block is
+# responsible for re-adding the resource to the pool if it is still usable.
+# In other words, it is generally assumed that on_error blocks explicitly
+# handle the rest of the lifetime of the resource.
+"
+EventMachine::Pool,perform,"a, b","a => (Array<%bot> or Array<RDL::Type::NominalType>)
+b => nil
+",nil,"    def perform(*a, &b)
+      work = EM::Callback(*a, &b)
+
+      @resources.pop do |resource|
+        if removed? resource
+          @removed.delete resource
+          reschedule work
+        else
+          process work, resource
+        end
+      end
+    end
+","# Perform a given #call-able object or block. The callable object will be
+# called with a resource from the pool as soon as one is available, and is
+# expected to return a deferrable.
+# 
+# The deferrable will have callback and errback added such that when the
+# deferrable enters a finished state, the object is returned to the pool.
+#
+# If on_error is defined, then objects are not automatically returned to the
+# pool.
+"
+EventMachine::Pool,num_waiting,"","",Integer,"    def num_waiting
+      @resources.num_waiting
+    end
+","# A peek at the number of enqueued jobs waiting for resources
+"
+EventMachine::Pool,removed?,resource,"resource => Symbol
+",(false or true),"    def removed? resource
+      @removed.include? resource
+    end
+","# Removed will show resources in a partial pruned state. Resources in the
+# removed list may not appear in the contents list if they are currently in
+# use.
+"
+EventMachine::Pool,requeue,resource,"resource => Symbol
+",nil,"    def requeue resource
+      @resources.push resource
+    end
+",""
+EventMachine::Pool,failure,resource,"resource => Symbol
+",Symbol,"    def failure resource
+      if @on_error
+        @contents.delete resource
+        @on_error.call resource
+        # Prevent users from calling a leak.
+        @removed.delete resource
+      else
+        requeue resource
+      end
+    end
+",""
+EventMachine::Pool,completion,"deferrable, resource","deferrable => EventMachine::DefaultDeferrable
+resource => Symbol
+",EventMachine::DefaultDeferrable,"    def completion deferrable, resource
+      deferrable.callback { requeue resource }
+      deferrable.errback  { failure resource }
+    end
+",""
+EventMachine::Pool,process,"work, resource","work => Proc
+resource => Symbol
+",EventMachine::DefaultDeferrable,"    def process work, resource
+      deferrable = work.call resource
+      if deferrable.kind_of?(EM::Deferrable)
+        completion deferrable, resource
+      else
+        raise ArgumentError, ""deferrable expected from work""
+      end
+    rescue
+      failure resource
+      raise
+    end
+",""
+EventMachine::Timer,initialize,"interval, callback, block","interval => (Float or Integer)
+callback => Proc
+block => nil
+",Integer,"    def initialize interval, callback=nil, &block
+      @signature = EventMachine::add_timer(interval, callback || block)
+    end
+","# Create a new timer that fires after a given number of seconds
+"
+EventMachine::Timer,cancel,"","",(false or nil),"    def cancel
+      EventMachine.send :cancel_timer, @signature
+    end
+","# Cancel the timer
+"
+EventMachine::PeriodicTimer,initialize,"interval, callback, block","interval => (Float or Integer)
+callback => Proc
+block => nil
+",Integer,"    def initialize interval, callback=nil, &block
+      @interval = interval
+      @code = callback || block
+      @cancelled = false
+      @work = method(:fire)
+      schedule
+    end
+","# Create a new periodic timer that executes every interval seconds
+"
+EventMachine::PeriodicTimer,cancel,"","",true,"    def cancel
+      @cancelled = true
+    end
+","# Cancel the periodic timer
+"
+EventMachine::PeriodicTimer,schedule,"","",Integer,"    def schedule
+      EventMachine::add_timer @interval, @work
+    end
+","# @private
+"
+EventMachine::PeriodicTimer,fire,"","",Integer,"    def fire
+      unless @cancelled
+        @code.call
+        schedule
+      end
+    end
+","# @private
+"
+EventMachine::DNS::Socket,initialize,"","",nil,"      def initialize
+        @nameserver = nil
+      end
+",""
+EventMachine::DNS::Socket,post_init,"","","Hash<%bot, %bot>","      def post_init
+        @requests = {}
+      end
+",""
+EventMachine::Connection,initialize,args,"args => Array<%bot>
+",nil,"    def initialize(*args)
+    end
+","# Stubbed initialize so legacy superclasses can safely call super
+#
+# @private
+"
+EventMachine::Connection,post_init,"","",nil,"    def post_init
+    end
+","# Called by the event loop immediately after the network connection has been established,
+# and before resumption of the network loop.
+# This method is generally not called by user code, but is called automatically
+# by the event loop. The base-class implementation is a no-op.
+# This is a very good place to initialize instance variables that will
+# be used throughout the lifetime of the network connection.
+#
+# @see #connection_completed
+# @see #unbind
+# @see #send_data
+# @see #receive_data
+"
+EventMachine::Connection,receive_data,data,"data => String
+",nil,"    def receive_data data
+      puts ""............>>>#{data.length}""
+    end
+","# Called by the event loop whenever data has been received by the network connection.
+# It is never called by user code. {#receive_data} is called with a single parameter, a String containing
+# the network protocol data, which may of course be binary. You will
+# generally redefine this method to perform your own processing of the incoming data.
+#
+# Here's a key point which is essential to understanding the event-driven
+# programming model: <i>EventMachine knows absolutely nothing about the protocol
+# which your code implements.</i> You must not make any assumptions about
+# the size of the incoming data packets, or about their alignment on any
+# particular intra-message or PDU boundaries (such as line breaks).
+# receive_data can and will send you arbitrary chunks of data, with the
+# only guarantee being that the data is presented to your code in the order
+# it was collected from the network. Don't even assume that the chunks of
+# data will correspond to network packets, as EventMachine can and will coalesce
+# several incoming packets into one, to improve performance. The implication for your
+# code is that you generally will need to implement some kind of a state machine
+# in your redefined implementation of receive_data. For a better understanding
+# of this, read through the examples of specific protocol handlers in EventMachine::Protocols
+#
+# The base-class implementation (which will be invoked only if you didn't override it in your protocol handler)
+# simply prints incoming data packet size to stdout.
+#
+# @param [String] data Opaque incoming data.
+# @note Depending on the protocol, buffer sizes and OS networking stack configuration, incoming data may or may not be ""a complete message"".
+#       It is up to this handler to detect content boundaries to determine whether all the content (for example, full HTTP request)
+#       has been received and can be processed.
+#
+# @see #post_init
+# @see #connection_completed
+# @see #unbind
+# @see #send_data
+# @see file:docs/GettingStarted.md EventMachine tutorial
+"
+EventMachine::Connection,ssl_handshake_completed,"","",nil,"    def ssl_handshake_completed
+    end
+","# Called by EventMachine when the SSL/TLS handshake has
+# been completed, as a result of calling #start_tls to initiate SSL/TLS on the connection.
+#
+# This callback exists because {#post_init} and {#connection_completed} are **not** reliable
+# for indicating when an SSL/TLS connection is ready to have its certificate queried for.
+#
+# @see #get_peer_cert
+"
+EventMachine::Connection,get_proxied_bytes,"","",Integer,"    def get_proxied_bytes
+      EventMachine::get_proxied_bytes(@signature)
+    end
+","# The number of bytes proxied to another connection. Reset to zero when
+# EventMachine::Connection#proxy_incoming_to is called, and incremented whenever data is proxied.
+"
+EventMachine::Connection,close_connection,after_writing,"after_writing => (false or true)
+",nil,"    def close_connection after_writing = false
+      EventMachine::close_connection @signature, after_writing
+    end
+","# EventMachine::Connection#close_connection is called only by user code, and never
+# by the event loop. You may call this method against a connection object in any
+# callback handler, whether or not the callback was made against the connection
+# you want to close. close_connection <i>schedules</i> the connection to be closed
+# at the next available opportunity within the event loop. You may not assume that
+# the connection is closed when close_connection returns. In particular, the framework
+# will callback the unbind method for the particular connection at a point shortly
+# after you call close_connection. You may assume that the unbind callback will
+# take place sometime after your call to close_connection completes. In other words,
+# the unbind callback will not re-enter your code ""inside"" of your call to close_connection.
+# However, it's not guaranteed that a future version of EventMachine will not change
+# this behavior.
+#
+# {#close_connection} will *silently discard* any outbound data which you have
+# sent to the connection using {EventMachine::Connection#send_data} but which has not
+# yet been sent across the network. If you want to avoid this behavior, use
+# {EventMachine::Connection#close_connection_after_writing}.
+#
+"
+EventMachine::Connection,detach,"","",Integer,"    def detach
+      EventMachine::detach_fd @signature
+    end
+","# Removes given connection from the event loop.
+# The connection's socket remains open and its file descriptor number is returned.
+"
+EventMachine::Connection,get_sock_opt,"level, option","level => Integer
+option => Integer
+",String,"    def get_sock_opt level, option
+      EventMachine::get_sock_opt @signature, level, option
+    end
+",""
+EventMachine::Connection,set_sock_opt,"level, optname, optval","level => Integer
+optname => Integer
+optval => true
+",Integer,"    def set_sock_opt level, optname, optval
+      EventMachine::set_sock_opt @signature, level, optname, optval
+    end
+",""
+EventMachine::Connection,close_connection_after_writing,"","",nil,"    def close_connection_after_writing
+      close_connection true
+    end
+","# A variant of {#close_connection}.
+# All of the descriptive comments given for close_connection also apply to
+# close_connection_after_writing, *with one exception*: if the connection has
+# outbound data sent using send_dat but which has not yet been sent across the network,
+# close_connection_after_writing will schedule the connection to be closed *after*
+# all of the outbound data has been safely written to the remote peer.
+#
+# Depending on the amount of outgoing data and the speed of the network,
+# considerable time may elapse between your call to close_connection_after_writing
+# and the actual closing of the socket (at which time the unbind callback will be called
+# by the event loop). During this time, you *may not* call send_data to transmit
+# additional data (that is, the connection is closed for further writes). In very
+# rare cases, you may experience a receive_data callback after your call to {#close_connection_after_writing},
+# depending on whether incoming data was in the process of being received on the connection
+# at the moment when you called {#close_connection_after_writing}. Your protocol handler must
+# be prepared to properly deal with such data (probably by ignoring it).
+#
+# @see #close_connection
+# @see #send_data
+"
+EventMachine::Connection,send_data,data,"data => String
+",Integer,"    def send_data data
+      data = data.to_s
+      size = data.bytesize if data.respond_to?(:bytesize)
+      size ||= data.size
+      EventMachine::send_data @signature, data, size
+    end
+","# Call this method to send data to the remote end of the network connection. It takes a single String argument,
+# which may contain binary data. Data is buffered to be sent at the end of this event loop tick (cycle).
+#
+# When used in a method that is event handler (for example, {#post_init} or {#connection_completed}, it will send
+# data to the other end of the connection that generated the event.
+# You can also call {#send_data} to write to other connections. For more information see The Chat Server Example in the
+# {file:docs/GettingStarted.md EventMachine tutorial}.
+#
+# If you want to send some data and then immediately close the connection, make sure to use {#close_connection_after_writing}
+# instead of {#close_connection}.
+#
+#
+# @param [String] data Data to send asynchronously
+#
+# @see file:docs/GettingStarted.md EventMachine tutorial
+# @see Connection#receive_data
+# @see Connection#post_init
+# @see Connection#unbind
+"
+EventMachine::Connection,error?,"","",true,"    def error?
+      errno = EventMachine::report_connection_error_status(@signature)
+      case errno
+      when 0
+        false
+      when -1
+        true
+      else
+        EventMachine::ERRNOS[errno]
+      end
+    end
+","# Returns true if the connection is in an error state, false otherwise.
+#
+# In general, you can detect the occurrence of communication errors or unexpected
+# disconnection by the remote peer by handing the {#unbind} method. In some cases, however,
+# it's useful to check the status of the connection using {#error?} before attempting to send data.
+# This function is synchronous but it will return immediately without blocking.
+#
+# @return [Boolean] true if the connection is in an error state, false otherwise
+"
+EventMachine::Connection,connection_completed,"","",nil,"    def connection_completed
+    end
+","# Called by the event loop when a remote TCP connection attempt completes successfully.
+# You can expect to get this notification after calls to {EventMachine.connect}. Remember that EventMachine makes remote connections
+# asynchronously, just as with any other kind of network event. This method
+# is intended primarily to assist with network diagnostics. For normal protocol
+# handling, use #post_init to perform initial work on a new connection (such as sending initial set of data).
+# {Connection#post_init} will always be called. This method will only be called in case of a successful completion.
+# A connection attempt which fails will result a call to {Connection#unbind} after the failure.
+#
+# @see Connection#post_init
+# @see Connection#unbind
+# @see file:docs/GettingStarted.md EventMachine tutorial
+"
+EventMachine::Connection,start_tls,args,"args => (Hash<%bot, %bot> or Hash<Symbol, (Array<String> or String)> or Hash<Symbol, Array<String>> or Hash<Symbol, String> or Hash<Symbol, true>)
+",nil,"    def start_tls args={}
+      priv_key     = args[:private_key_file]
+      cert_chain   = args[:cert_chain_file]
+      verify_peer  = args[:verify_peer]
+      sni_hostname = args[:sni_hostname]
+      cipher_list  = args[:cipher_list]
+      ssl_version  = args[:ssl_version]
+      ecdh_curve   = args[:ecdh_curve]
+      dhparam      = args[:dhparam]
+      fail_if_no_peer_cert = args[:fail_if_no_peer_cert]
+
+      [priv_key, cert_chain].each do |file|
+        next if file.nil? or file.empty?
+        raise FileNotFoundException,
+        ""Could not find #{file} for start_tls"" unless File.exist? file
+      end
+
+      protocols_bitmask = 0
+      if ssl_version.nil?
+        protocols_bitmask |= EventMachine::EM_PROTO_TLSv1
+        protocols_bitmask |= EventMachine::EM_PROTO_TLSv1_1
+        protocols_bitmask |= EventMachine::EM_PROTO_TLSv1_2
+        if EventMachine.const_defined? :EM_PROTO_TLSv1_3
+          protocols_bitmask |= EventMachine::EM_PROTO_TLSv1_3
+        end
+      else
+        [ssl_version].flatten.each do |p|
+          case p.to_s.downcase
+          when 'sslv2'
+            protocols_bitmask |= EventMachine::EM_PROTO_SSLv2
+          when 'sslv3'
+            protocols_bitmask |= EventMachine::EM_PROTO_SSLv3
+          when 'tlsv1'
+            protocols_bitmask |= EventMachine::EM_PROTO_TLSv1
+          when 'tlsv1_1'
+            protocols_bitmask |= EventMachine::EM_PROTO_TLSv1_1
+          when 'tlsv1_2'
+            protocols_bitmask |= EventMachine::EM_PROTO_TLSv1_2
+          when 'tlsv1_3'
+            protocols_bitmask |= EventMachine::EM_PROTO_TLSv1_3
+          else
+            raise(""Unrecognized SSL/TLS Protocol: #{p}"")
+          end
+        end
+      end
+
+      EventMachine::set_tls_parms(@signature, priv_key || '', cert_chain || '', verify_peer, fail_if_no_peer_cert, sni_hostname || '', cipher_list || '', ecdh_curve || '', dhparam || '', protocols_bitmask)
+      EventMachine::start_tls @signature
+    end
+","# Call {#start_tls} at any point to initiate TLS encryption on connected streams.
+# The method is smart enough to know whether it should perform a server-side
+# or a client-side handshake. An appropriate place to call {#start_tls} is in
+# your redefined {#post_init} method, or in the {#connection_completed} handler for
+# an outbound connection.
+#
+#
+# @option args [String] :cert_chain_file (nil) local path of a readable file that contants  a chain of X509 certificates in
+#                                              the [PEM format](http://en.wikipedia.org/wiki/Privacy_Enhanced_Mail),
+#                                              with the most-resolved certificate at the top of the file, successive intermediate
+#                                              certs in the middle, and the root (or CA) cert at the bottom.
+#
+# @option args [String] :private_key_file (nil) local path of a readable file that must contain a private key in the [PEM format](http://en.wikipedia.org/wiki/Privacy_Enhanced_Mail).
+#
+# @option args [Boolean] :verify_peer (false)   indicates whether a server should request a certificate from a peer, to be verified by user code.
+#                                               If true, the {#ssl_verify_peer} callback on the {EventMachine::Connection} object is called with each certificate
+#                                               in the certificate chain provided by the peer. See documentation on {#ssl_verify_peer} for how to use this.
+#
+# @option args [Boolean] :fail_if_no_peer_cert (false)   Used in conjunction with verify_peer. If set the SSL handshake will be terminated if the peer does not provide a certificate.
+#
+#
+# @option args [String] :cipher_list (""ALL:!ADH:!LOW:!EXP:!DES-CBC3-SHA:@STRENGTH"") indicates the available SSL cipher values. Default value is ""ALL:!ADH:!LOW:!EXP:!DES-CBC3-SHA:@STRENGTH"". Check the format of the OpenSSL cipher string at http://www.openssl.org/docs/apps/ciphers.html#CIPHER_LIST_FORMAT.
+#
+# @option args [String] :ecdh_curve (nil)  The curve for ECDHE ciphers. See available ciphers with 'openssl ecparam -list_curves'
+#
+# @option args [String] :dhparam (nil)  The local path of a file containing DH parameters for EDH ciphers in [PEM format](http://en.wikipedia.org/wiki/Privacy_Enhanced_Mail) See: 'openssl dhparam'
+#
+# @option args [Array] :ssl_version (TLSv1 TLSv1_1 TLSv1_2) indicates the allowed SSL/TLS versions. Possible values are: {SSLv2}, {SSLv3}, {TLSv1}, {TLSv1_1}, {TLSv1_2}.
+#
+# @example Using TLS with EventMachine
+#
+#  require 'rubygems'
+#  require 'eventmachine'
+#
+#  module Handler
+#    def post_init
+#      start_tls(:private_key_file => '/tmp/server.key', :cert_chain_file => '/tmp/server.crt', :verify_peer => false)
+#    end
+#  end
+#
+#   EventMachine.run do
+#    EventMachine.start_server(""127.0.0.1"", 9999, Handler)
+#  end
+#
+# @param [Hash] args
+#
+# @todo support passing an encryption parameter, which can be string or Proc, to get a passphrase
+# for encrypted private keys.
+# @todo support passing key material via raw strings or Procs that return strings instead of
+# just filenames.
+#
+# @see #ssl_verify_peer
+"
+EventMachine::Connection,get_peer_cert,"","",String,"    def get_peer_cert
+      EventMachine::get_peer_cert @signature
+    end
+","# If [TLS](http://en.wikipedia.org/wiki/Transport_Layer_Security) is active on the connection, returns the remote [X509 certificate](http://en.wikipedia.org/wiki/X.509)
+# as a string, in the popular [PEM format](http://en.wikipedia.org/wiki/Privacy_Enhanced_Mail). This can then be used for arbitrary validation
+# of a peer's certificate in your code.
+#
+# This should be called in/after the {#ssl_handshake_completed} callback, which indicates
+# that SSL/TLS is active. Using this callback is important, because the certificate may not
+# be available until the time it is executed. Using #post_init or #connection_completed is
+# not adequate, because the SSL handshake may still be taking place.
+#
+# This method will return `nil` if:
+#
+# * EventMachine is not built with [OpenSSL](http://www.openssl.org) support
+# * [TLS](http://en.wikipedia.org/wiki/Transport_Layer_Security) is not active on the connection
+# * TLS handshake is not yet complete
+# * Remote peer for any other reason has not presented a certificate
+#
+#
+# @example Getting peer TLS certificate information in EventMachine
+#
+#  module Handler
+#    def post_init
+#      puts ""Starting TLS""
+#      start_tls
+#    end
+#
+#    def ssl_handshake_completed
+#      puts get_peer_cert
+#      close_connection
+#    end
+#
+#    def unbind
+#      EventMachine::stop_event_loop
+#    end
+#  end
+#
+#   EventMachine.run do
+#     EventMachine.connect ""mail.google.com"", 443, Handler
+#  end
+#
+#  # Will output:
+#  # -----BEGIN CERTIFICATE-----
+#  # MIIDIjCCAougAwIBAgIQbldpChBPqv+BdPg4iwgN8TANBgkqhkiG9w0BAQUFADBM
+#  # MQswCQYDVQQGEwJaQTElMCMGA1UEChMcVGhhd3RlIENvbnN1bHRpbmcgKFB0eSkg
+#  # THRkLjEWMBQGA1UEAxMNVGhhd3RlIFNHQyBDQTAeFw0wODA1MDIxNjMyNTRaFw0w
+#  # OTA1MDIxNjMyNTRaMGkxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpDYWxpZm9ybmlh
+#  # MRYwFAYDVQQHEw1Nb3VudGFpbiBWaWV3MRMwEQYDVQQKEwpHb29nbGUgSW5jMRgw
+#  # FgYDVQQDEw9tYWlsLmdvb2dsZS5jb20wgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJ
+#  # AoGBALlkxdh2QXegdElukCSOV2+8PKiONIS+8Tu9K7MQsYpqtLNC860zwOPQ2NLI
+#  # 3Zp4jwuXVTrtzGuiqf5Jioh35Ig3CqDXtLyZoypjZUQcq4mlLzHlhIQ4EhSjDmA7
+#  # Ffw9y3ckSOQgdBQWNLbquHh9AbEUjmhkrYxIqKXeCnRKhv6nAgMBAAGjgecwgeQw
+#  # KAYDVR0lBCEwHwYIKwYBBQUHAwEGCCsGAQUFBwMCBglghkgBhvhCBAEwNgYDVR0f
+#  # BC8wLTAroCmgJ4YlaHR0cDovL2NybC50aGF3dGUuY29tL1RoYXd0ZVNHQ0NBLmNy
+#  # bDByBggrBgEFBQcBAQRmMGQwIgYIKwYBBQUHMAGGFmh0dHA6Ly9vY3NwLnRoYXd0
+#  # ZS5jb20wPgYIKwYBBQUHMAKGMmh0dHA6Ly93d3cudGhhd3RlLmNvbS9yZXBvc2l0
+#  # b3J5L1RoYXd0ZV9TR0NfQ0EuY3J0MAwGA1UdEwEB/wQCMAAwDQYJKoZIhvcNAQEF
+#  # BQADgYEAsRwpLg1dgCR1gYDK185MFGukXMeQFUvhGqF8eT/CjpdvezyKVuz84gSu
+#  # 6ccMXgcPQZGQN/F4Xug+Q01eccJjRSVfdvR5qwpqCj+6BFl5oiKDBsveSkrmL5dz
+#  # s2bn7TdTSYKcLeBkjXxDLHGBqLJ6TNCJ3c4/cbbG5JhGvoema94=
+#  # -----END CERTIFICATE-----
+#
+# You can do whatever you want with the certificate String, such as load it
+# as a certificate object using the OpenSSL library, and check its fields.
+#
+# @return [String] the remote [X509 certificate](http://en.wikipedia.org/wiki/X.509), in the popular [PEM format](http://en.wikipedia.org/wiki/Privacy_Enhanced_Mail),
+#                  if TLS is active on the connection
+#
+# @see Connection#start_tls
+# @see Connection#ssl_handshake_completed
+"
+EventMachine::Connection,get_cipher_bits,"","",Integer,"    def get_cipher_bits
+      EventMachine::get_cipher_bits @signature
+    end
+",""
+EventMachine::Connection,get_cipher_name,"","",String,"    def get_cipher_name
+      EventMachine::get_cipher_name @signature
+    end
+",""
+EventMachine::Connection,get_cipher_protocol,"","",String,"    def get_cipher_protocol
+      EventMachine::get_cipher_protocol @signature
+    end
+",""
+EventMachine::Connection,get_sni_hostname,"","",String,"    def get_sni_hostname
+      EventMachine::get_sni_hostname @signature
+    end
+",""
+EventMachine::Connection,send_datagram,"data, recipient_address, recipient_port","data => String
+recipient_address => String
+recipient_port => Integer
+",Integer,"    def send_datagram data, recipient_address, recipient_port
+      data = data.to_s
+      size = data.bytesize if data.respond_to?(:bytesize)
+      size ||= data.size
+      EventMachine::send_datagram @signature, data, size, recipient_address, Integer(recipient_port)
+    end
+","# Sends UDP messages.
+#
+# This method may be called from any Connection object that refers
+# to an open datagram socket (see EventMachine#open_datagram_socket).
+# The method sends a UDP (datagram) packet containing the data you specify,
+# to a remote peer specified by the IP address and port that you give
+# as parameters to the method.
+# Observe that you may send a zero-length packet (empty string).
+# However, you may not send an arbitrarily-large data packet because
+# your operating system will enforce a platform-specific limit on
+# the size of the outbound packet. (Your kernel
+# will respond in a platform-specific way if you send an overlarge
+# packet: some will send a truncated packet, some will complain, and
+# some will silently drop your request).
+# On LANs, it's usually OK to send datagrams up to about 4000 bytes in length,
+# but to be really safe, send messages smaller than the Ethernet-packet
+# size (typically about 1400 bytes). Some very restrictive WANs
+# will either drop or truncate packets larger than about 500 bytes.
+#
+# @param [String] data              Data to send asynchronously
+# @param [String] recipient_address IP address of the recipient
+# @param [String] recipient_port    Port of the recipient
+"
+EventMachine::Connection,get_peername,"","",String,"    def get_peername
+      EventMachine::get_peername @signature
+    end
+","# This method is used with stream-connections to obtain the identity
+# of the remotely-connected peer. If a peername is available, this method
+# returns a sockaddr structure. The method returns nil if no peername is available.
+# You can use Socket.unpack_sockaddr_in and its variants to obtain the
+# values contained in the peername structure returned from #get_peername.
+#
+# @example How to get peer IP address and port with EventMachine
+#
+#  require 'socket'
+#
+#  module Handler
+#    def receive_data data
+#      port, ip = Socket.unpack_sockaddr_in(get_peername)
+#      puts ""got #{data.inspect} from #{ip}:#{port}""
+#    end
+#  end
+"
+EventMachine::Connection,get_idle_time,"","",Float,"    def get_idle_time
+      EventMachine::get_idle_time @signature
+    end
+","# The number of seconds since the last send/receive activity on this connection.
+"
+EventMachine::Connection,comm_inactivity_timeout,"","",Float,"    def comm_inactivity_timeout
+      EventMachine::get_comm_inactivity_timeout @signature
+    end
+","# comm_inactivity_timeout returns the current value (float in seconds) of the inactivity-timeout
+# property of network-connection and datagram-socket objects. A nonzero value
+# indicates that the connection or socket will automatically be closed if no read or write
+# activity takes place for at least that number of seconds.
+# A zero value (the default) specifies that no automatic timeout will take place.
+"
+EventMachine::Connection,comm_inactivity_timeout=,value,"value => (Float or Integer)
+",true,"    def comm_inactivity_timeout= value
+      EventMachine::set_comm_inactivity_timeout @signature, value.to_f
+    end
+","# Allows you to set the inactivity-timeout property for
+# a network connection or datagram socket. Specify a non-negative float value in seconds.
+# If the value is greater than zero, the connection or socket will automatically be closed
+# if no read or write activity takes place for at least that number of seconds.
+# Specify a value of zero to indicate that no automatic timeout should take place.
+# Zero is the default value.
+"
+EventMachine::Connection,pending_connect_timeout,"","",Float,"      def pending_connect_timeout
+        EventMachine::get_pending_connect_timeout @signature
+      end
+","# The duration after which a TCP connection in the connecting state will fail.
+# It is important to distinguish this value from {EventMachine::Connection#comm_inactivity_timeout},
+# which looks at how long since data was passed on an already established connection.
+# The value is a float in seconds.
+#
+# @return [Float] The duration after which a TCP connection in the connecting state will fail, in seconds.
+"
+EventMachine::Connection,pending_connect_timeout=,value,"value => (Float or Integer)
+",true,"    def pending_connect_timeout= value
+      EventMachine::set_pending_connect_timeout @signature, value.to_f
+    end
+","# Sets the duration after which a TCP connection in a
+# connecting state will fail.
+#
+# @param [Float, #to_f] value Connection timeout in seconds
+"
+EventMachine::Connection,send_file_data,filename,"filename => String
+",Integer,"    def send_file_data filename
+      EventMachine::send_file_data @signature, filename
+    end
+","# Like {EventMachine::Connection#send_data}, this sends data to the remote end of
+# the network connection. {EventMachine::Connection#send_file_data} takes a
+# filename as an argument, though, and sends the contents of the file, in one
+# chunk.
+#
+# @param [String] filename Local path of the file to send
+#
+# @see #send_data
+# @author Kirk Haines
+"
+EventMachine::Connection,stream_file_data,"filename, args","filename => String
+args => (Hash<%bot, %bot> or Hash<Symbol, true>)
+",EventMachine::FileStreamer,"    def stream_file_data filename, args={}
+      EventMachine::FileStreamer.new( self, filename, args )
+    end
+","# Open a file on the filesystem and send it to the remote peer. This returns an
+# object of type {EventMachine::Deferrable}. The object's callbacks will be executed
+# on the reactor main thread when the file has been completely scheduled for
+# transmission to the remote peer. Its errbacks will be called in case of an error (such as file-not-found).
+# This method employs various strategies to achieve the fastest possible performance,
+# balanced against minimum consumption of memory.
+#
+# Warning: this feature has an implicit dependency on an outboard extension,
+# evma_fastfilereader. You must install this extension in order to use {#stream_file_data}
+# with files larger than a certain size (currently 8192 bytes).
+#
+# @option args [Boolean] :http_chunks (false) If true, this method will stream the file data in a format
+#                                             compatible with the HTTP chunked-transfer encoding
+#
+# @param [String] filename Local path of the file to stream
+# @param [Hash] args Options
+#
+# @return [EventMachine::Deferrable]
+"
+EventMachine::Connection,notify_readable=,mode,"mode => (false or true)
+",nil,"    def notify_readable= mode
+      EventMachine::set_notify_readable @signature, mode
+    end
+","# Watches connection for readability. Only possible if the connection was created
+# using {EventMachine.attach} and had {EventMachine.notify_readable}/{EventMachine.notify_writable} defined on the handler.
+#
+# @see #notify_readable?
+"
+EventMachine::Connection,notify_readable?,"","",(false or true),"    def notify_readable?
+      EventMachine::is_notify_readable @signature
+    end
+","# @return [Boolean] true if the connection is being watched for readability.
+"
+EventMachine::Connection,notify_writable=,mode,"mode => (false or true)
+",nil,"    def notify_writable= mode
+      EventMachine::set_notify_writable @signature, mode
+    end
+","# Watches connection for writeability. Only possible if the connection was created
+# using {EventMachine.attach} and had {EventMachine.notify_readable}/{EventMachine.notify_writable} defined on the handler.
+#
+# @see #notify_writable?
+"
+EventMachine::Connection,pause,"","",true,"    def pause
+      EventMachine::pause_connection @signature
+    end
+","# Pause a connection so that {#send_data} and {#receive_data} events are not fired until {#resume} is called.
+# @see #resume
+"
+EventMachine::Connection,resume,"","",true,"    def resume
+      EventMachine::resume_connection @signature
+    end
+","# Resume a connection's {#send_data} and {#receive_data} events.
+# @see #pause
+"
+EventMachine::Connection,paused?,"","",(false or true),"    def paused?
+      EventMachine::connection_paused? @signature
+    end
+","# @return [Boolean] true if the connect was paused using {EventMachine::Connection#pause}.
+# @see #pause
+# @see #resume
+"
+EventMachine::Connection,watch_only?,"","",(false or true),"    def watch_only?
+      EventMachine::watch_only? @signature
+    end
+","# @return [Boolean] true if the connect was watch only
+"
+EventMachine::DeferrableChildProcess,initialize,"","",Array<%bot>,"    def initialize
+      super
+      @data = []
+    end
+","# @private
+"
+EventMachine::DeferrableChildProcess,receive_data,data,"data => String
+",Array<String>,"    def receive_data data
+      @data << data
+    end
+","# @private
+"
+EventMachine::SystemCmd,initialize,cb,"cb => Proc
+",Array<%bot>,"    def initialize cb
+      @cb = cb
+      @output = []
+    end
+",""
+EventMachine::SystemCmd,receive_data,data,"data => String
+",Array<String>,"    def receive_data data
+      @output << data
+    end
+",""
+EventMachine::ThreadedResource,initialize,"","",Thread,"    def initialize
+      @resource = yield
+
+      @running = true
+      @queue   = ::Queue.new
+      @thread  = Thread.new do
+        @queue.pop.call while @running
+      end
+    end
+","# The block should return the resource that will be yielded in a dispatch.
+"
+EventMachine::ThreadedResource,dispatch,"","",EventMachine::Completion,"    def dispatch
+      completion = EM::Completion.new
+      @queue << lambda do
+        begin
+          result = yield @resource
+          completion.succeed result
+        rescue => e
+          completion.fail e
+        end
+      end
+      completion
+    end
+","# Called on the EM thread, generally in a perform block to return a
+# completion for the work.
+"
+EventMachine::ThreadedResource,shutdown,"","",Thread,"    def shutdown
+      @running = false
+      @queue << lambda {}
+      @thread.join
+    end
+","# Kill the internal thread. should only be used to cleanup - generally
+# only required for tests.
+"
+EventMachine::Iterator,initialize,"list, concurrency","list => (Array<Integer> or Array<String> or Proc or Range)
+concurrency => Integer
+",false,"    def initialize(list, concurrency = 1)
+      raise ArgumentError, 'concurrency must be bigger than zero' unless (concurrency > 0)
+      if list.respond_to?(:call)
+        @list = nil
+        @list_proc = list
+      elsif list.respond_to?(:to_a)
+        @list = list.to_a.dup
+        @list_proc = nil
+      else
+        raise ArgumentError, 'argument must be a proc or an array'
+      end
+      @concurrency = concurrency
+
+      @started = false
+      @ended = false
+    end
+","# Create a new parallel async iterator with specified concurrency.
+#
+#   i = EM::Iterator.new(1..100, 10)
+#
+# will create an iterator over the range that processes 10 items at a time. Iteration
+# is started via #each, #map or #inject
+#
+# The list may either be an array-like object, or a proc that returns a new object
+# to be processed each time it is called.  If a proc is used, it must return
+# EventMachine::Iterator::Stop to signal the end of the iterations.
+#
+"
+EventMachine::Iterator,concurrency=,val,"val => Integer
+",nil,"    def concurrency=(val)
+      old = @concurrency
+      @concurrency = val
+
+      spawn_workers if val > old and @started and !@ended
+    end
+","# Change the concurrency of this iterator. Workers will automatically be spawned or destroyed
+# to accomodate the new concurrency level.
+#
+"
+EventMachine::Iterator,each,"foreach, after, blk","foreach => Proc
+after => Proc
+blk => nil
+",EventMachine::Iterator,"    def each(foreach=nil, after=nil, &blk)
+      raise ArgumentError, 'proc or block required for iteration' unless foreach ||= blk
+      raise RuntimeError, 'cannot iterate over an iterator more than once' if @started or @ended
+
+      @started = true
+      @pending = 0
+      @workers = 0
+
+      all_done = proc{
+        after.call if after and @ended and @pending == 0
+      }
+
+      @process_next = proc{
+        # p [:process_next, :pending=, @pending, :workers=, @workers, :ended=, @ended, :concurrency=, @concurrency, :list=, @list]
+        unless @ended or @workers > @concurrency
+          item = next_item()
+          if item.equal?(Stop)
+            @ended = true
+            @workers -= 1
+            all_done.call
+          else
+            @pending += 1
+
+            is_done = false
+            on_done = proc{
+              raise RuntimeError, 'already completed this iteration' if is_done
+              is_done = true
+
+              @pending -= 1
+
+              if @ended
+                all_done.call
+              else
+                EM.next_tick(@process_next)
+              end
+            }
+            class << on_done
+              alias :next :call
+            end
+
+            foreach.call(item, on_done)
+          end
+        else
+          @workers -= 1
+        end
+      }
+
+      spawn_workers
+
+      self
+    end
+","# Iterate over a set of items using the specified block or proc.
+#
+#   EM::Iterator.new(1..100).each do |num, iter|
+#     puts num
+#     iter.next
+#   end
+#
+# An optional second proc is invoked after the iteration is complete.
+#
+#   EM::Iterator.new(1..100).each(
+#     proc{ |num,iter| iter.next },
+#     proc{ puts 'all done' }
+#   )
+#
+"
+EventMachine::Iterator,map,"foreach, after","foreach => Proc
+after => Proc
+",EventMachine::Iterator,"    def map(foreach, after)
+      index = 0
+
+      inject([], proc{ |results,item,iter|
+        i = index
+        index += 1
+
+        is_done = false
+        on_done = proc{ |res|
+          raise RuntimeError, 'already returned a value for this iteration' if is_done
+          is_done = true
+
+          results[i] = res
+          iter.return(results)
+        }
+        class << on_done
+          alias :return :call
+          def next
+            raise NoMethodError, 'must call #return on a map iterator'
+          end
+        end
+
+        foreach.call(item, on_done)
+      }, proc{ |results|
+        after.call(results)
+      })
+    end
+","# Collect the results of an asynchronous iteration into an array.
+#
+#   EM::Iterator.new(%w[ pwd uptime uname date ], 2).map(proc{ |cmd,iter|
+#     EM.system(cmd){ |output,status|
+#       iter.return(output)
+#     }
+#   }, proc{ |results|
+#     p results
+#   })
+#
+"
+EventMachine::Iterator,inject,"obj, foreach, after","obj => (Array<%bot> or Hash<%bot, %bot>)
+foreach => Proc
+after => Proc
+",EventMachine::Iterator,"    def inject(obj, foreach, after)
+      each(proc{ |item,iter|
+        is_done = false
+        on_done = proc{ |res|
+          raise RuntimeError, 'already returned a value for this iteration' if is_done
+          is_done = true
+
+          obj = res
+          iter.next
+        }
+        class << on_done
+          alias :return :call
+          def next
+            raise NoMethodError, 'must call #return on an inject iterator'
+          end
+        end
+
+        foreach.call(obj, item, on_done)
+      }, proc{
+        after.call(obj)
+      })
+    end
+","# Inject the results of an asynchronous iteration onto a given object.
+#
+#   EM::Iterator.new(%w[ pwd uptime uname date ], 2).inject({}, proc{ |hash,cmd,iter|
+#     EM.system(cmd){ |output,status|
+#       hash[cmd] = status.exitstatus == 0 ? output.strip : nil
+#       iter.return(hash)
+#     }
+#   }, proc{ |results|
+#     p results
+#   })
+#
+"
+EventMachine::Iterator,spawn_workers,"","",nil,"    def spawn_workers
+      EM.next_tick(start_worker = proc{
+        if @workers < @concurrency and !@ended
+          # p [:spawning_worker, :workers=, @workers, :concurrency=, @concurrency, :ended=, @ended]
+          @workers += 1
+          @process_next.call
+          EM.next_tick(start_worker)
+        end
+      })
+      nil
+    end
+","# Spawn workers to consume items from the iterator's enumerator based on the current concurrency level.
+#
+"
+EventMachine::Iterator,next_item,"","",(Integer or String),"    def next_item
+      if @list_proc
+        @list_proc.call
+      else
+        @list.empty? ? Stop : @list.shift
+      end
+    end
+","# Return the next item from @list or @list_proc.
+# Once items have run out, will return EM::Iterator::Stop.  Procs must supply this themselves
+"
+EventMachine::ProcessWatch,receive_data,data,"data => String
+",true,"    def receive_data(data)
+      case data
+      when Cfork
+        process_forked
+      when Cexit
+        process_exited
+      end
+    end
+","# @private
+"
+EventMachine::ProcessWatch,pid,"","",Integer,"    def pid
+      @pid
+    end
+","# Returns the pid that EventMachine::watch_process was originally called with.
+"
+EventMachine::Deferrable,callback,block,"block => nil
+",(EventMachine::DefaultDeferrable or EventMachine::DeferrableChildProcess or EventMachine::FileStreamer or EventMachine::IOStreamer or EventMachine::Protocols::HttpClient or EventMachine::Protocols::HttpClient2::Request or TestFutures::MyFuture or TestFutures::RecursiveCallback),"    def callback &block
+      return unless block
+      @deferred_status ||= :unknown
+      if @deferred_status == :succeeded
+        block.call(*@deferred_args)
+      elsif @deferred_status != :failed
+        @callbacks ||= []
+        @callbacks.unshift block # << block
+      end
+      self
+    end
+","# Specify a block to be executed if and when the Deferrable object receives
+# a status of :succeeded. See #set_deferred_status for more information.
+#
+# Calling this method on a Deferrable object whose status is not yet known
+# will cause the callback block to be stored on an internal list.
+# If you call this method on a Deferrable whose status is :succeeded, the
+# block will be executed immediately, receiving the parameters given to the
+# prior #set_deferred_status call.
+#
+#--
+# If there is no status, add a callback to an internal list.
+# If status is succeeded, execute the callback immediately.
+# If status is failed, do nothing.
+#
+"
+EventMachine::Deferrable,errback,block,"block => nil
+",(EventMachine::DefaultDeferrable or EventMachine::FileStreamer or EventMachine::Protocols::HttpClient or EventMachine::Protocols::HttpClient2::Request or EventMachine::Protocols::SmtpClient or TestDeferrable::Later or TestFutures::MyErrorFuture),"    def errback &block
+      return unless block
+      @deferred_status ||= :unknown
+      if @deferred_status == :failed
+        block.call(*@deferred_args)
+      elsif @deferred_status != :succeeded
+        @errbacks ||= []
+        @errbacks.unshift block # << block
+      end
+      self
+    end
+","# Specify a block to be executed if and when the Deferrable object receives
+# a status of :failed. See #set_deferred_status for more information.
+#--
+# If there is no status, add an errback to an internal list.
+# If status is failed, execute the errback immediately.
+# If status is succeeded, do nothing.
+#
+"
+EventMachine::Deferrable,set_deferred_status,"status, args","status => Symbol
+args => (Array<%bot> or Array<RDL::Type::GenericType> or Array<RDL::Type::NominalType>)
+",Array<%bot>,"    def set_deferred_status status, *args
+      cancel_timeout
+      @errbacks ||= nil
+      @callbacks ||= nil
+      @deferred_status = status
+      @deferred_args = args
+      case @deferred_status
+      when :succeeded
+        if @callbacks
+          while cb = @callbacks.pop
+            cb.call(*@deferred_args)
+          end
+        end
+        @errbacks.clear if @errbacks
+      when :failed
+        if @errbacks
+          while eb = @errbacks.pop
+            eb.call(*@deferred_args)
+          end
+        end
+        @callbacks.clear if @callbacks
+      end
+    end
+","# Sets the ""disposition"" (status) of the Deferrable object. See also the large set of
+# sugarings for this method.
+# Note that if you call this method without arguments,
+# no arguments will be passed to the callback/errback.
+# If the user has coded these with arguments, then the
+# user code will throw an argument exception.
+# Implementors of deferrable classes <b>must</b>
+# document the arguments they will supply to user callbacks.
+#
+# OBSERVE SOMETHING VERY SPECIAL here: you may call this method even
+# on the INSIDE of a callback. This is very useful when a previously-registered
+# callback wants to change the parameters that will be passed to subsequently-registered
+# ones.
+#
+# You may give either :succeeded or :failed as the status argument.
+#
+# If you pass :succeeded, then all of the blocks passed to the object using the #callback
+# method (if any) will be executed BEFORE the #set_deferred_status method returns. All of the blocks
+# passed to the object using #errback will be discarded.
+#
+# If you pass :failed, then all of the blocks passed to the object using the #errback
+# method (if any) will be executed BEFORE the #set_deferred_status method returns. All of the blocks
+# passed to the object using # callback will be discarded.
+#
+# If you pass any arguments to #set_deferred_status in addition to the status argument,
+# they will be passed as arguments to any callbacks or errbacks that are executed.
+# It's your responsibility to ensure that the argument lists specified in your callbacks and
+# errbacks match the arguments given in calls to #set_deferred_status, otherwise Ruby will raise
+# an ArgumentError.
+#
+#--
+# We're shifting callbacks off and discarding them as we execute them.
+# This is valid because by definition callbacks are executed no more than
+# once. It also has the magic effect of permitting recursive calls, which
+# means that a callback can call #set_deferred_status and change the parameters
+# that will be sent to subsequent callbacks down the chain.
+#
+# Changed @callbacks and @errbacks from push/shift to unshift/pop, per suggestion
+# by Kirk Haines, to work around the memory leak bug that still exists in many Ruby
+# versions.
+#
+# Changed 15Sep07: after processing callbacks or errbacks, CLEAR the other set of
+# handlers. This gets us a little closer to the behavior of Twisted's ""deferred,""
+# which only allows status to be set once. Prior to making this change, it was possible
+# to ""succeed"" a Deferrable (triggering its callbacks), and then immediately ""fail"" it,
+# triggering its errbacks! That is clearly undesirable, but it's just as undesirable
+# to raise an exception is status is set more than once on a Deferrable. The latter
+# behavior would invalidate the idiom of resetting arguments by setting status from
+# within a callback or errback, but more seriously it would cause spurious errors
+# if a Deferrable was timed out and then an attempt was made to succeed it. See the
+# comments under the new method #timeout.
+#
+"
+EventMachine::Deferrable,timeout,"seconds, args","seconds => (Float or Integer)
+args => (Array<%bot> or Array<RDL::Type::NominalType>)
+",(EventMachine::DefaultDeferrable or TestDeferrable::Later),"    def timeout seconds, *args
+      cancel_timeout
+      me = self
+      @deferred_timeout = EventMachine::Timer.new(seconds) {me.fail(*args)}
+      self
+    end
+","# Setting a timeout on a Deferrable causes it to go into the failed state after
+# the Timeout expires (passing no arguments to the object's errbacks).
+# Setting the status at any time prior to a call to the expiration of the timeout
+# will cause the timer to be cancelled.
+"
+EventMachine::Deferrable,cancel_timeout,"","",nil,"    def cancel_timeout
+      @deferred_timeout ||= nil
+      if @deferred_timeout
+        @deferred_timeout.cancel
+        @deferred_timeout = nil
+      end
+    end
+","# Cancels an outstanding timeout if any. Undoes the action of #timeout.
+#
+"
+EventMachine::Deferrable,succeed,args,"args => (Array<%bot> or Array<RDL::Type::NominalType>)
+",Array<%bot>,"    def succeed *args
+      set_deferred_status :succeeded, *args
+    end
+","# Sugar for set_deferred_status(:succeeded, ...)
+#
+"
+EventMachine::Deferrable,fail,args,"args => (Array<%bot> or Array<RDL::Type::NominalType>)
+",Array<%bot>,"    def fail *args
+      set_deferred_status :failed, *args
+    end
+","# Sugar for set_deferred_status(:failed, ...)
+#
+"
+EventMachine::TickLoop,initialize,"a, b","a => Array<%bot>
+b => nil
+",true,"    def initialize(*a, &b)
+      @work = EM::Callback(*a, &b)
+      @stops = []
+      @stopped = true
+    end
+","# Arguments: A callback (EM::Callback) to call each tick. If the call
+# returns +:stop+ then the loop will be stopped. Any other value is 
+# ignored.
+"
+EventMachine::TickLoop,on_stop,"a, b","a => Array<%bot>
+b => nil
+",(Array<Proc> or Integer),"    def on_stop(*a, &b)
+      if @stopped
+        EM::Callback(*a, &b).call
+      else
+        @stops << EM::Callback(*a, &b)
+      end
+    end
+","# Arguments: A callback (EM::Callback) to call once on the next stop (or
+# immediately if already stopped).
+"
+EventMachine::TickLoop,stop,"","",nil,"    def stop
+      @stopped = true
+      until @stops.empty?
+        @stops.shift.call
+      end
+    end
+","# Stop the tick loop immediately, and call it's on_stop callbacks.
+"
+EventMachine::TickLoop,stopped?,"","",(false or true),"    def stopped?
+      @stopped
+    end
+","# Query if the loop is stopped.
+"
+EventMachine::TickLoop,start,"","",EventMachine::TickLoop,"    def start
+      raise ArgumentError, ""double start"" unless @stopped
+      @stopped = false
+      schedule
+    end
+","# Start the tick loop, will raise argument error if the loop is already
+# running.
+"
+EventMachine::TickLoop,schedule,"","",EventMachine::TickLoop,"    def schedule
+      EM.next_tick do
+        next if @stopped
+        if @work.call == :stop
+          stop
+        else
+          schedule
+        end
+      end
+      self
+    end
+",""
+EventMachine::SpawnedProcess,notify,x,"x => (Array<%bot> or Array<RDL::Type::NominalType>)
+",nil,"    def notify *x
+      me = self
+      EM.next_tick {
+        # A notification executes in the context of this
+        # SpawnedProcess object. That makes self and notify
+        # work as one would expect.
+        #
+        y = me.call(*x)
+        if y and y.respond_to?(:pull_out_yield_block)
+          a,b = y.pull_out_yield_block
+          set_receiver a
+          self.notify if b
+        end
+      }
+    end
+","# Send a message to the spawned process
+"
+EventMachine::SpawnedProcess,set_receiver,blk,"blk => Proc
+",Symbol,"    def set_receiver blk
+      (class << self ; self ; end).class_eval do
+        remove_method :call if method_defined? :call
+        define_method :call, blk
+      end
+    end
+",""
+EventMachine::YieldBlockFromSpawnedProcess,initialize,"block, notify","block => Proc
+notify => (false or true)
+",(Array<(Proc or false)> or Array<(Proc or true)>),"    def initialize block, notify
+      @block = [block,notify]
+    end
+",""
+EventMachine::YieldBlockFromSpawnedProcess,pull_out_yield_block,"","",(Array<(Proc or false)> or Array<(Proc or true)>),"    def pull_out_yield_block
+      @block
+    end
+",""
+EventMachine::Channel,initialize,"","",Integer,"    def initialize
+      @subs = {}
+      @uid  = 0
+    end
+",""
+EventMachine::Channel,num_subscribers,"","",Integer,"    def num_subscribers
+      return @subs.size
+    end
+","# Return the number of current subscribers.
+"
+EventMachine::Channel,subscribe,"a, b","a => Array<%bot>
+b => nil
+",Integer,"    def subscribe(*a, &b)
+      name = gen_id
+      EM.schedule { @subs[name] = EM::Callback(*a, &b) }
+
+      name
+    end
+","# Takes any arguments suitable for EM::Callback() and returns a subscriber
+# id for use when unsubscribing.
+#
+# @return [Integer] Subscribe identifier
+# @see #unsubscribe
+"
+EventMachine::Channel,unsubscribe,name,"name => Integer
+",Proc,"    def unsubscribe(name)
+      EM.schedule { @subs.delete name }
+    end
+","# Removes subscriber from the list.
+#
+# @param [Integer] Subscriber identifier
+# @see #subscribe
+"
+EventMachine::Channel,push,items,"items => Array<RDL::Type::NominalType>
+",Array<Integer>,"    def push(*items)
+      items = items.dup
+      EM.schedule { items.each { |i| @subs.values.each { |s| s.call i } } }
+    end
+","# Add items to the channel, which are pushed out to all subscribers.
+"
+EventMachine::Channel,pop,"a, b","a => Array<%bot>
+b => nil
+",Integer,"    def pop(*a, &b)
+      EM.schedule {
+        name = subscribe do |*args|
+          unsubscribe(name)
+          EM::Callback(*a, &b).call(*args)
+        end
+      }
+    end
+","# Fetches one message from the channel.
+"
+EventMachine::Channel,gen_id,"","",Integer,"    def gen_id
+      @uid += 1
+    end
+","# @private
+"
+BufferedTokenizer,initialize,delimiter,"delimiter => String
+",Integer,"  def initialize(delimiter = $/)
+    @delimiter = delimiter
+    @input = []
+    @tail = ''
+    @trim = @delimiter.length - 1
+  end
+","# New BufferedTokenizers will operate on lines delimited by a delimiter,
+# which is by default the global input delimiter $/ (""\n"").
+#
+# The input buffer is stored as an array.  This is by far the most efficient
+# approach given language constraints (in C a linked list would be a more
+# appropriate data structure).  Segments of input data are stored in a list
+# which is only joined when a token is reached, substantially reducing the
+# number of objects required for the operation.
+"
+BufferedTokenizer,extract,data,"data => String
+",(Array<%bot> or Array<String>),"  def extract(data)
+    if @trim > 0
+      tail_end = @tail.slice!(-@trim, @trim) # returns nil if string is too short
+      data = tail_end + data if tail_end
+    end
+
+    @input << @tail
+    entities = data.split(@delimiter, -1)
+    @tail = entities.shift
+
+    unless entities.empty?
+      @input << @tail
+      entities.unshift @input.join
+      @input.clear
+      @tail = entities.pop
+    end
+
+    entities
+  end
+","# Extract takes an arbitrary string of input data and returns an array of
+# tokenized entities, provided there were any available to extract.  This
+# makes for easy processing of datagrams using a pattern like:
+#
+#   tokenizer.extract(data).map { |entity| Decode(entity) }.each do ...
+#
+# Using -1 makes split to return """" if the token is at the end of
+# the string, meaning the last element is the start of the next chunk.
+"
+BufferedTokenizer,flush,"","",String,"  def flush
+    @input << @tail
+    buffer = @input.join
+    @input.clear
+    @tail = """" # @tail.clear is slightly faster, but not supported on 1.8.7
+    buffer
+  end
+","# Flush the contents of the input buffer, i.e. return the input buffer even though
+# a token has not yet been encountered
+"
+EventMachine::Completion,initialize,"","",nil,"    def initialize
+      @state = :unknown
+      @callbacks = Hash.new { |h,k| h[k] = [] }
+      @value = []
+      @timeout_timer = nil
+    end
+",""
+EventMachine::Completion,succeed,args,"args => (Array<%bot> or Array<RDL::Type::NominalType>)
+",nil,"    def succeed(*args)
+      change_state(:succeeded, *args)
+    end
+","# Enter the :succeeded state, setting the result value if given.
+"
+EventMachine::Completion,fail,args,"args => (Array<%bot> or Array<RDL::Type::NominalType>)
+",nil,"    def fail(*args)
+      change_state(:failed, *args)
+    end
+","# Enter the :failed state, setting the result value if given.
+"
+EventMachine::Completion,stateback,"state, a, b","state => Symbol
+a => Array<%bot>
+b => nil
+",EventMachine::Completion,"    def stateback(state, *a, &b)
+      # The following is quite unfortunate special casing for :completed
+      # statebacks, but it's a necessary evil for latent completion
+      # definitions.
+
+      if :completed == state || !completed? || @state == state
+        @callbacks[state] << EM::Callback(*a, &b)
+      end
+      execute_callbacks
+      self
+    end
+","# Statebacks are called when you enter (or are in) the named state.
+"
+EventMachine::Completion,callback,"a, b","a => Array<%bot>
+b => nil
+",EventMachine::Completion,"    def callback(*a, &b)
+      stateback(:succeeded, *a, &b)
+    end
+","# Callbacks are called when you enter (or are in) a :succeeded state.
+"
+EventMachine::Completion,errback,"a, b","a => Array<%bot>
+b => nil
+",EventMachine::Completion,"    def errback(*a, &b)
+      stateback(:failed, *a, &b)
+    end
+","# Errbacks are called when you enter (or are in) a :failed state.
+"
+EventMachine::Completion,completion,"a, b","a => Array<%bot>
+b => nil
+",EventMachine::Completion,"    def completion(*a, &b)
+      stateback(:completed, *a, &b)
+    end
+","# Completions are called when you enter (or are in) either a :failed or a
+# :succeeded state. They are stored as a special (reserved) state called
+# :completed.
+"
+EventMachine::Completion,change_state,"state, args","state => Symbol
+args => (Array<%bot> or Array<RDL::Type::NominalType>)
+",nil,"    def change_state(state, *args)
+      @value = args
+      @state = state
+
+      EM.schedule { execute_callbacks }
+    end
+","# Enter a new state, setting the result value if given. If the state is one
+# of :succeeded or :failed, then :completed callbacks will also be called.
+"
+EventMachine::Completion,completed?,"","",(false or true),"    def completed?
+      completion_states.any? { |s| state == s }
+    end
+","# Indicates that we've reached some kind of completion state, by default
+# this is :succeeded or :failed. Due to these semantics, the :completed
+# state is reserved for internal use.
+"
+EventMachine::Completion,completion_states,"","",Array<Symbol>,"    def completion_states
+      [:succeeded, :failed]
+    end
+","# Completion states simply returns a list of completion states, by default
+# this is :succeeded and :failed.
+"
+EventMachine::Completion,timeout,"time, args","time => Float
+args => Array<RDL::Type::NominalType>
+",EventMachine::Timer,"    def timeout(time, *args)
+      cancel_timeout
+      @timeout_timer = EM::Timer.new(time) do
+        fail(*args) unless completed?
+      end
+    end
+","# Schedule a time which if passes before we enter a completion state, this
+# deferrable will be failed with the given arguments.
+"
+EventMachine::Completion,cancel_timeout,"","",nil,"    def cancel_timeout
+      if @timeout_timer
+        @timeout_timer.cancel
+        @timeout_timer = nil
+      end
+    end
+","# Disable the timeout
+"
+EventMachine::Completion,execute_callbacks,"","",nil,"    def execute_callbacks
+      execute_state_callbacks(state)
+      if completed?
+        execute_state_callbacks(:completed)
+        clear_dead_callbacks
+        cancel_timeout
+      end
+    end
+","# Execute all callbacks for the current state. If in a completed state, then
+# call any statebacks associated with the completed state.
+"
+EventMachine::Completion,execute_state_callbacks,state,"state => Symbol
+",nil,"    def execute_state_callbacks(state)
+      while callback = @callbacks[state].shift
+        callback.call(*value)
+      end
+    end
+","# Iterate all callbacks for a given state, and remove then call them.
+"
+EventMachine::Completion,clear_dead_callbacks,"","",Array<Symbol>,"    def clear_dead_callbacks
+      completion_states.each do |state|
+        @callbacks[state].clear
+      end
+    end
+","# If we enter a completion state, clear other completion states after all
+# callback chains are completed. This means that operation specific
+# callbacks can't be dual-called, which is most common user error.
+"
+EventMachine::FileStreamer,initialize,"connection, filename, args","connection => (TestSendFile::BadFileTestModule::EM_CONNECTION_CLASS or TestSendFile::ChunkStreamTestModule::EM_CONNECTION_CLASS or TestSendFile::StreamTestModule::EM_CONNECTION_CLASS)
+filename => String
+args => (Hash<%bot, %bot> or Hash<Symbol, true>)
+",nil,"    def initialize connection, filename, args = {}
+      @connection = connection
+      @http_chunks = args[:http_chunks]
+
+      if File.exist?(filename)
+        @size = File.size(filename)
+        if @size <= MappingThreshold
+          stream_without_mapping filename
+        else
+          stream_with_mapping filename
+        end
+      else
+        fail ""file not found""
+      end
+    end
+","# @param [EventMachine::Connection] connection
+# @param [String] filename File path
+#
+# @option args [Boolean] :http_chunks (false) Use HTTP 1.1 style chunked-encoding semantics.
+"
+EventMachine::FileStreamer,stream_without_mapping,filename,"filename => String
+",nil,"    def stream_without_mapping filename
+      if @http_chunks
+        @connection.send_data ""#{@size.to_s(16)}\r\n""
+        @connection.send_file_data filename
+        @connection.send_data ""\r\n0\r\n\r\n""
+      else
+        @connection.send_file_data filename
+      end
+      succeed
+    end
+","# @private
+"
+EventMachine::FileStreamer,stream_with_mapping,filename,"filename => String
+",nil,"    def stream_with_mapping filename
+      ensure_mapping_extension_is_present
+
+      @position = 0
+      @mapping = EventMachine::FastFileReader::Mapper.new filename
+      stream_one_chunk
+    end
+","# @private
+"
+EventMachine::FileStreamer,stream_one_chunk,"","",nil,"    def stream_one_chunk
+      loop {
+        if @position < @size
+          if @connection.get_outbound_data_size > BackpressureLevel
+            EventMachine::next_tick {stream_one_chunk}
+            break
+          else
+            len = @size - @position
+            len = ChunkSize if (len > ChunkSize)
+
+            @connection.send_data( ""#{len.to_s(16)}\r\n"" ) if @http_chunks
+            @connection.send_data( @mapping.get_chunk( @position, len ))
+            @connection.send_data(""\r\n"") if @http_chunks
+
+            @position += len
+          end
+        else
+          @connection.send_data ""0\r\n\r\n"" if @http_chunks
+          @mapping.close
+          succeed
+          break
+        end
+      }
+    end
+","# Used internally to stream one chunk at a time over multiple reactor ticks
+# @private
+"
+EventMachine::FileStreamer,ensure_mapping_extension_is_present,"","",false,"    def ensure_mapping_extension_is_present
+      @@fastfilereader ||= (require 'fastfilereaderext')
+    end
+","#
+# We use an outboard extension class to get memory-mapped files.
+# It's outboard to avoid polluting the core distro, but that means
+# there's a ""hidden"" dependency on it. The first time we get here in
+# any run, try to load up the dependency extension. User code will see
+# a LoadError if it's not available, but code that doesn't require
+# mapped files will work fine without it. This is a somewhat difficult
+# compromise between usability and proper modularization.
+#
+# @private
+"
+EventMachine::Queue,initialize,"","",Array<%bot>,"    def initialize
+      @sink  = []
+      @drain = []
+      @popq  = []
+    end
+",""
+EventMachine::Queue,pop,"a, b","a => Array<%bot>
+b => nil
+",nil,"    def pop(*a, &b)
+      cb = EM::Callback(*a, &b)
+      EM.schedule do
+        if @drain.empty?
+          @drain = @sink
+          @sink = []
+        end
+        if @drain.empty?
+          @popq << cb
+        else
+          cb.call @drain.shift
+        end
+      end
+      nil # Always returns nil
+    end
+","# Pop items off the queue, running the block on the reactor thread. The pop
+# will not happen immediately, but at some point in the future, either in
+# the next tick, if the queue has data, or when the queue is populated.
+#
+# @return [NilClass] nil
+"
+EventMachine::Queue,push,items,"items => Array<RDL::Type::NominalType>
+",nil,"    def push(*items)
+      EM.schedule do
+        @sink.push(*items)
+        unless @popq.empty?
+          @drain = @sink
+          @sink = []
+          @popq.shift.call @drain.shift until @drain.empty? || @popq.empty?
+        end
+      end
+    end
+","# Push items onto the queue in the reactor thread. The items will not appear
+# in the queue immediately, but will be scheduled for addition during the
+# next reactor tick.
+"
+EventMachine::Queue,empty?,"","",true,"    def empty?
+      @drain.empty? && @sink.empty?
+    end
+","# @return [Boolean]
+# @note This is a peek, it's not thread safe, and may only tend toward accuracy.
+"
+EventMachine::Queue,size,"","",Integer,"    def size
+      @drain.size + @sink.size
+    end
+","# @return [Integer] Queue size
+# @note This is a peek, it's not thread safe, and may only tend toward accuracy.
+"
+EventMachine::Queue,num_waiting,"","",Integer,"    def num_waiting
+      @popq.size
+    end
+","# @return [Integer] Waiting size
+# @note This is a peek at the number of jobs that are currently waiting on the Queue
+"
+EventMachine::Protocols::LineText2,receive_data,data,"data => String
+",nil,"      def receive_data data
+        return unless (data and data.length > 0)
+
+        # Do this stuff in lieu of a constructor.
+        @lt2_mode ||= :lines
+        @lt2_delimiter ||= ""\n""
+        @lt2_linebuffer ||= []
+
+        remaining_data = data
+
+        while remaining_data.length > 0
+          if @lt2_mode == :lines
+            delimiter_string = case @lt2_delimiter
+            when Regexp
+              remaining_data.slice(@lt2_delimiter)
+            else
+              @lt2_delimiter
+            end
+            ix = remaining_data.index(delimiter_string) if delimiter_string
+            if ix
+              @lt2_linebuffer << remaining_data[0...ix]
+              ln = @lt2_linebuffer.join
+              @lt2_linebuffer.clear
+              if @lt2_delimiter == ""\n""
+                ln.chomp!
+              end
+              receive_line ln
+              remaining_data = remaining_data[(ix+delimiter_string.length)..-1]
+            else
+              @lt2_linebuffer << remaining_data
+              remaining_data = """"
+            end
+          elsif @lt2_mode == :text
+            if @lt2_textsize
+              needed = @lt2_textsize - @lt2_textpos
+              will_take = if remaining_data.length > needed
+                            needed
+                          else
+                            remaining_data.length
+                          end
+
+              @lt2_textbuffer << remaining_data[0...will_take]
+              tail = remaining_data[will_take..-1]
+
+              @lt2_textpos += will_take
+              if @lt2_textpos >= @lt2_textsize
+                # Reset line mode (the default behavior) BEFORE calling the
+                # receive_binary_data. This makes it possible for user code
+                # to call set_text_mode, enabling chains of text blocks
+                # (which can possibly be of different sizes).
+                set_line_mode
+                receive_binary_data @lt2_textbuffer.join
+                receive_end_of_binary_data
+              end
+
+              remaining_data = tail
+            else
+              receive_binary_data remaining_data
+              remaining_data = """"
+            end
+          end
+        end
+      end
+","#--
+# Will loop internally until there's no data left to read.
+# That way the user-defined handlers we call can modify the
+# handling characteristics on a per-token basis.
+#
+"
+EventMachine::Protocols::LineText2,set_delimiter,delim,"delim => (Regexp or String)
+",(Regexp or String),"      def set_delimiter delim
+        @lt2_delimiter = case delim
+        when Regexp
+          delim
+        else
+          delim.to_s
+        end
+      end
+","# The line delimiter may be a regular expression or a string.  Anything
+# passed to set_delimiter other than a regular expression will be
+# converted to a string.
+"
+EventMachine::Protocols::LineText2,set_line_mode,data,"data => String
+",nil,"      def set_line_mode data=""""
+        @lt2_mode = :lines
+        (@lt2_linebuffer ||= []).clear
+        receive_data data.to_s
+      end
+","# Called internally but also exposed to user code, for the case in which
+# processing of binary data creates a need to transition back to line mode.
+# We support an optional parameter to ""throw back"" some data, which might
+# be an umprocessed chunk of the transmitted binary data, or something else
+# entirely.
+"
+EventMachine::Protocols::LineText2,set_text_mode,size,"size => Integer
+",Integer,"      def set_text_mode size=nil
+        if size == 0
+          set_line_mode
+        else
+          @lt2_mode = :text
+          (@lt2_textbuffer ||= []).clear
+          @lt2_textsize = size # which can be nil, signifying no limit
+          @lt2_textpos = 0
+        end
+      end
+",""
+EventMachine::Protocols::LineText2,set_binary_mode,size,"size => Integer
+",Integer,"      def set_binary_mode size=nil
+        set_text_mode size
+      end
+","# Alias for #set_text_mode, added for back-compatibility with LineAndTextProtocol.
+"
+EventMachine::Protocols::LineText2,unbind,"","",String,"      def unbind
+        @lt2_mode ||= nil
+        if @lt2_mode == :text and @lt2_textpos > 0
+          receive_binary_data @lt2_textbuffer.join
+        end
+      end
+","# In case of a dropped connection, we'll send a partial buffer to user code
+# when in sized text mode. User overrides of #receive_binary_data need to
+# be aware that they may get a short buffer.
+"
+EventMachine::Protocols::LineText2,receive_end_of_binary_data,"","",nil,"      def receive_end_of_binary_data
+        # no-op
+      end
+","# Stub. Should be subclassed by user code.
+# This is called when transitioning internally from text mode
+# back to line mode. Useful when client code doesn't want
+# to keep track of how much data it's received.
+"
+EventMachine::Protocols::SmtpClient,initialize,"","",nil,"      def initialize
+        @succeeded = nil
+        @responder = nil
+        @code = nil
+        @msg = nil
+      end
+",""
+EventMachine::Protocols::SmtpClient,post_init,"","",Time,"      def post_init
+        @return_values = OpenStruct.new
+        @return_values.start_time = Time.now
+      end
+","# @private
+"
+EventMachine::Protocols::SmtpClient,connection_completed,"","",Array<%bot>,"      def connection_completed
+        @responder = :receive_signon
+        @msg = []
+      end
+","# @private
+"
+EventMachine::Protocols::SmtpClient,receive_line,ln,"ln => String
+",Array<%bot>,"      def receive_line ln
+        $>.puts ln if @args[:verbose]
+        @range = ln[0...1].to_i
+        @code = ln[0...3].to_i
+        @msg << ln[4..-1]
+        unless ln[3...4] == '-'
+          $>.puts @responder if @args[:verbose]
+          send @responder
+          @msg.clear
+        end
+      end
+","# @private
+"
+EventMachine::Protocols::SmtpClient,send_ehlo,"","",Integer,"      def send_ehlo
+        send_data ""EHLO #{@args[:domain]}\r\n""
+      end
+",""
+EventMachine::Protocols::SmtpClient,receive_signon,"","",Symbol,"      def receive_signon
+        return invoke_error unless @range == 2
+        send_ehlo
+        @responder = :receive_ehlo_response
+      end
+",""
+EventMachine::Protocols::SmtpClient,receive_ehlo_response,"","",Symbol,"      def receive_ehlo_response
+        return invoke_error unless @range == 2
+        @server_caps = @msg
+        invoke_starttls
+      end
+",""
+EventMachine::Protocols::SmtpClient,invoke_starttls,"","",Symbol,"      def invoke_starttls
+        if @args[:starttls]
+          # It would be more sociable to first ask if @server_caps contains
+          # the string ""STARTTLS"" before we invoke it, but hey, life's too short.
+          send_data ""STARTTLS\r\n""
+          @responder = :receive_starttls_response
+        else
+          invoke_auth
+        end
+      end
+",""
+EventMachine::Protocols::SmtpClient,invoke_auth,"","",Symbol,"      def invoke_auth
+        if @args[:auth]
+          if @args[:auth][:type] == :plain
+            psw = @args[:auth][:password]
+            if psw.respond_to?(:call)
+              psw = psw.call
+            end
+            #str = Base64::encode64(""\0#{@args[:auth][:username]}\0#{psw}"").chomp
+            str = [""\0#{@args[:auth][:username]}\0#{psw}""].pack(""m"").gsub(/\n/, '')
+            send_data ""AUTH PLAIN #{str}\r\n""
+            @responder = :receive_auth_response
+          else
+            return invoke_internal_error(""unsupported auth type"")
+          end
+        else
+          invoke_mail_from
+        end
+      end
+","# Perform an authentication. If the caller didn't request one, then fall through
+# to the mail-from state.
+"
+EventMachine::Protocols::SmtpClient,invoke_mail_from,"","",Symbol,"      def invoke_mail_from
+        send_data ""MAIL FROM: <#{@args[:from]}>\r\n""
+        @responder = :receive_mail_from_response
+      end
+",""
+EventMachine::Protocols::SmtpClient,receive_mail_from_response,"","",Symbol,"      def receive_mail_from_response
+        return invoke_error unless @range == 2
+        invoke_rcpt_to
+      end
+",""
+EventMachine::Protocols::SmtpClient,invoke_rcpt_to,"","",Symbol,"      def invoke_rcpt_to
+        @rcpt_responses ||= []
+        l = @rcpt_responses.length
+        to = @args[:to].is_a?(Array) ? @args[:to] : [@args[:to].to_s]
+        if l < to.length
+          send_data ""RCPT TO: <#{to[l]}>\r\n""
+          @responder = :receive_rcpt_to_response
+        else
+          e = @rcpt_responses.select {|rr| rr.last == 2}
+          if e and e.length > 0
+            invoke_data
+          else
+            invoke_error
+          end
+        end
+      end
+",""
+EventMachine::Protocols::SmtpClient,receive_rcpt_to_response,"","",Symbol,"      def receive_rcpt_to_response
+        @rcpt_responses << [@code, @msg, @range]
+        invoke_rcpt_to
+      end
+",""
+EventMachine::Protocols::SmtpClient,escape_leading_dots,s,"s => String
+",String,"      def escape_leading_dots(s)
+        s.gsub(/^\./, '..')
+      end
+",""
+EventMachine::Protocols::SmtpClient,invoke_data,"","",Symbol,"      def invoke_data
+        send_data ""DATA\r\n""
+        @responder = :receive_data_response
+      end
+",""
+EventMachine::Protocols::SmtpClient,receive_data_response,"","",Symbol,"      def receive_data_response
+        return invoke_error unless @range == 3
+
+        # The data to send can be given in either @args[:message], @args[:content], or the
+        # combination of @args[:header] and @args[:body].
+        #
+        #   - @args[:message] (String) MUST be a valid RFC2822 Internet Message
+        #
+        #   - @args[:content] (String) MUST be in correct SMTP body format, with escaped
+        #     leading dots and a trailing dot line
+        #
+        #   - @args[:header]  (Hash or String)
+        #   - @args[:body]    (Array or String)
+        if @args[:message]
+          send_data escape_leading_dots(@args[:message].to_s)
+          send_data ""\r\n.\r\n""
+        elsif @args[:content]
+          send_data @args[:content].to_s
+        else
+          # The header can be a hash or an array.
+          if @args[:header].is_a?(Hash)
+            (@args[:header] || {}).each {|k,v| send_data escape_leading_dots(""#{k}: #{v}\r\n"") }
+          else
+            send_data escape_leading_dots(@args[:header].to_s)
+          end
+          send_data ""\r\n""
+
+          if @args[:body].is_a?(Array)
+            @args[:body].each {|e| send_data escape_leading_dots(e)}
+          else
+            send_data escape_leading_dots(@args[:body].to_s)
+          end
+
+          send_data ""\r\n.\r\n""
+        end
+
+        @responder = :receive_message_response
+      end
+",""
+EventMachine::Protocols::SmtpClient,receive_message_response,"","",nil,"      def receive_message_response
+        return invoke_error unless @range == 2
+        send_data ""QUIT\r\n""
+        close_connection_after_writing
+        @succeeded = true
+        @return_values.elapsed_time = Time.now - @return_values.start_time
+        @return_values.responder = @responder
+        @return_values.code = @code
+        @return_values.message = @msg
+        set_deferred_status :succeeded, @return_values
+      end
+",""
+EventMachine::Protocols::LineAndTextProtocol,initialize,args,"args => Array<%bot>
+",Symbol,"      def initialize *args
+        super
+        lbp_init_line_state
+      end
+",""
+EventMachine::Protocols::LineAndTextProtocol,receive_data,data,"data => String
+",(Array<%bot> or Array<String>),"      def receive_data data
+        if @lbp_mode == :lines
+          begin
+            @lpb_buffer.extract(data).each do |line|
+              receive_line(line.chomp) if respond_to?(:receive_line)
+            end
+          rescue
+            receive_error('overlength line') if respond_to?(:receive_error)
+            close_connection
+            return
+          end
+        else
+          if @lbp_binary_limit > 0
+            wanted = @lbp_binary_limit - @lbp_binary_bytes_received
+            chunk = nil
+            if data.length > wanted
+              chunk = data.slice!(0...wanted)
+            else
+              chunk = data
+              data = """"
+            end
+            @lbp_binary_buffer[@lbp_binary_bytes_received...(@lbp_binary_bytes_received+chunk.length)] = chunk
+            @lbp_binary_bytes_received += chunk.length
+            if @lbp_binary_bytes_received == @lbp_binary_limit
+              receive_binary_data(@lbp_binary_buffer) if respond_to?(:receive_binary_data)
+              lbp_init_line_state
+            end
+            receive_data(data) if data.length > 0
+          else
+            receive_binary_data(data) if respond_to?(:receive_binary_data)
+            data = """"
+          end
+        end
+      end
+",""
+EventMachine::Protocols::LineAndTextProtocol,set_binary_mode,size,"size => Integer
+",nil,"      def set_binary_mode size = nil
+        if @lbp_mode == :lines
+          if size == 0
+            receive_binary_data("""") if respond_to?(:receive_binary_data)
+            # Do no more work here. Stay in line mode and keep consuming data.
+          else
+            @lbp_binary_limit = size.to_i # (nil will be stored as zero)
+            if @lbp_binary_limit > 0
+              raise ""Overlength"" if @lbp_binary_limit > MaxBinaryLength # arbitrary sanity check
+              @lbp_binary_buffer = ""\0"" * @lbp_binary_limit
+              @lbp_binary_bytes_received = 0
+            end
+
+            @lbp_mode = :binary
+            receive_data @lpb_buffer.flush
+          end
+        else
+          raise ""invalid operation""
+        end
+      end
+","# Set up to read the supplied number of binary bytes.
+# This recycles all the data currently waiting in the line buffer, if any.
+# If the limit is nil, then ALL subsequent data will be treated as binary
+# data and passed to the upstream protocol handler as we receive it.
+# If a limit is given, we'll hold the incoming binary data and not
+# pass it upstream until we've seen it all, or until there is an unbind
+# (in which case we'll pass up a partial).
+# Specifying nil for the limit (the default) means there is no limit.
+# Specifiyng zero for the limit will cause an immediate transition back to line mode.
+#
+"
+EventMachine::Protocols::LineAndTextProtocol,lbp_init_line_state,"","",Symbol,"      def lbp_init_line_state
+        @lpb_buffer = BufferedTokenizer.new(""\n"")
+        @lbp_mode = :lines
+      end
+","#--
+# For internal use, establish protocol baseline for handling lines.
+"
+EventMachine::Protocols::SmtpServer,initialize,args,"args => Array<%bot>
+",Array<%bot>,"      def initialize *args
+        super
+        @parms = @@parms
+        init_protocol_state
+      end
+",""
+EventMachine::Protocols::SmtpServer,post_init,"","",nil,"      def post_init
+        #send_data ""220 #{get_server_greeting}\r\n"" (ORIGINAL)
+        #(EM.spawn {|x| x.send_data ""220 #{x.get_server_greeting}\r\n""}).notify(self)
+        (EM.spawn {|x| x.send_server_greeting}).notify(self)
+      end
+","# In SMTP, the server talks first. But by a (perhaps flawed) axiom in EM,
+# #post_init will execute BEFORE the block passed to #start_server, for any
+# given accepted connection. Since in this class we'll probably be getting
+# a lot of initialization parameters, we want the guts of post_init to
+# run AFTER the application has initialized the connection object. So we
+# use a spawn to schedule the post_init to run later.
+# It's a little weird, I admit. A reasonable alternative would be to set
+# parameters as a class variable and to do that before accepting any connections.
+#
+# OBSOLETE, now we have @@parms. But the spawn is nice to keep as an illustration.
+#
+"
+EventMachine::Protocols::SmtpServer,send_server_greeting,"","",Integer,"      def send_server_greeting
+        send_data ""220 #{get_server_greeting}\r\n""
+      end
+",""
+EventMachine::Protocols::SmtpServer,receive_line,ln,"ln => String
+",(Array<%bot> or Array<Symbol>),"      def receive_line ln
+        @@parms[:verbose] and $>.puts "">>> #{ln}""
+
+        return process_data_line(ln) if @state.include?(:data)
+        return process_auth_line(ln) if @state.include?(:auth_incomplete)
+
+        case ln
+        when EhloRegex
+          process_ehlo $'.dup
+        when HeloRegex
+          process_helo $'.dup
+        when MailFromRegex
+          process_mail_from $'.dup
+        when RcptToRegex
+          process_rcpt_to $'.dup
+        when DataRegex
+          process_data
+        when RsetRegex
+          process_rset
+        when VrfyRegex
+          process_vrfy
+        when ExpnRegex
+          process_expn
+        when HelpRegex
+          process_help
+        when NoopRegex
+          process_noop
+        when QuitRegex
+          process_quit
+        when StarttlsRegex
+          process_starttls
+        when AuthRegex
+          process_auth $'.dup
+        else
+          process_unknown
+        end
+      end
+",""
+EventMachine::Protocols::SmtpServer,reset_protocol_state,"","",nil,"      def reset_protocol_state
+        init_protocol_state
+        s,@state = @state,[]
+        @state << :starttls if s.include?(:starttls)
+        @state << :ehlo if s.include?(:ehlo)
+        receive_transaction
+      end
+","#--
+# This is called at several points to restore the protocol state
+# to a pre-transaction state. In essence, we ""forget"" having seen
+# any valid command except EHLO and STARTTLS.
+# We also have to callback user code, in case they're keeping track
+# of senders, recipients, and whatnot.
+#
+# We try to follow the convention of avoiding the verb ""receive"" for
+# internal method names except receive_line (which we inherit), and
+# using only receive_xxx for user-overridable stubs.
+#
+# init_protocol_state is called when we initialize the connection as
+# well as during reset_protocol_state. It does NOT call the user
+# override method. This enables us to promise the users that they
+# won't see the overridable fire except after EHLO and RSET, and
+# after a message has been received. Although the latter may be wrong.
+# The standard may allow multiple DATA segments with the same set of
+# senders and recipients.
+#
+"
+EventMachine::Protocols::SmtpServer,init_protocol_state,"","",(Array<%bot> or Array<Symbol>),"      def init_protocol_state
+        @state ||= []
+      end
+",""
+EventMachine::Protocols::SmtpServer,process_ehlo,domain,"domain => String
+",Array<Symbol>,"      def process_ehlo domain
+        if receive_ehlo_domain domain
+          send_data ""250-#{get_server_domain}\r\n""
+          if @@parms[:starttls]
+            send_data ""250-STARTTLS\r\n""
+          end
+          if @@parms[:auth]
+            send_data ""250-AUTH PLAIN\r\n""
+          end
+          send_data ""250-NO-SOLICITING\r\n""
+          # TODO, size needs to be configurable.
+          send_data ""250 SIZE 20000000\r\n""
+          reset_protocol_state
+          @state << :ehlo
+        else
+          send_data ""550 Requested action not taken\r\n""
+        end
+      end
+","#--
+# EHLO/HELO is always legal, per the standard. On success
+# it always clears buffers and initiates a mail ""transaction.""
+# Which means that a MAIL FROM must follow.
+#
+# Per the standard, an EHLO/HELO or a RSET ""initiates"" an email
+# transaction. Thereafter, MAIL FROM must be received before
+# RCPT TO, before DATA. Not sure what this specific ordering
+# achieves semantically, but it does make it easier to
+# implement. We also support user-specified requirements for
+# STARTTLS and AUTH. We make it impossible to proceed to MAIL FROM
+# without fulfilling tls and/or auth, if the user specified either
+# or both as required. We need to check the extension standard
+# for auth to see if a credential is discarded after a RSET along
+# with all the rest of the state. We'll behave as if it is.
+# Now clearly, we can't discard tls after its been negotiated
+# without dropping the connection, so that flag doesn't get cleared.
+#
+"
+EventMachine::Protocols::SmtpServer,process_quit,"","",nil,"      def process_quit
+        send_data ""221 Ok\r\n""
+        close_connection_after_writing
+      end
+",""
+EventMachine::Protocols::SmtpServer,process_data,"","",Array<%bot>,"      def process_data
+        unless @state.include?(:rcpt)
+          send_data ""503 Operation sequence error\r\n""
+        else
+          succeeded = proc {
+            send_data ""354 Send it\r\n""
+            @state << :data
+            @databuffer = []
+          }
+          failed = proc {
+            send_data ""550 Operation failed\r\n""
+          }
+
+          d = receive_data_command
+
+          if d.respond_to?(:callback)
+            d.callback(&succeeded)
+            d.errback(&failed)
+          else
+            (d ? succeeded : failed).call
+          end
+        end
+      end
+","#--
+# Unusually, we can deal with a Deferrable returned from the user application.
+# This was added to deal with a special case in a particular application, but
+# it would be a nice idea to add it to the other user-code callbacks.
+#
+"
+EventMachine::Protocols::SmtpServer,process_mail_from,sender,"sender => String
+",Array<Symbol>,"      def process_mail_from sender
+        if (@@parms[:starttls]==:required and !@state.include?(:starttls))
+          send_data ""550 This server requires STARTTLS before MAIL FROM\r\n""
+        elsif (@@parms[:auth]==:required and !@state.include?(:auth))
+          send_data ""550 This server requires authentication before MAIL FROM\r\n""
+        elsif @state.include?(:mail_from)
+          send_data ""503 MAIL already given\r\n""
+        else
+          unless receive_sender sender
+            send_data ""550 sender is unacceptable\r\n""
+          else
+            send_data ""250 Ok\r\n""
+            @state << :mail_from
+          end
+        end
+      end
+","#--
+# Requiring TLS is touchy, cf RFC2784.
+# Requiring AUTH seems to be much more reasonable.
+# We don't currently support any notion of deriving an authentication from the TLS
+# negotiation, although that would certainly be reasonable.
+# We DON'T allow MAIL FROM to be given twice.
+# We DON'T enforce all the various rules for validating the sender or
+# the reverse-path (like whether it should be null), and notifying the reverse
+# path in case of delivery problems. All of that is left to the calling application.
+#
+"
+EventMachine::Protocols::SmtpServer,process_rcpt_to,rcpt,"rcpt => String
+",Array<Symbol>,"      def process_rcpt_to rcpt
+        unless @state.include?(:mail_from)
+          send_data ""503 MAIL is required before RCPT\r\n""
+        else
+          succeeded = proc {
+            send_data ""250 Ok\r\n""
+            @state << :rcpt unless @state.include?(:rcpt)
+          }
+          failed = proc {
+            send_data ""550 recipient is unacceptable\r\n""
+          }
+
+          d = receive_recipient rcpt
+
+          if d.respond_to?(:set_deferred_status)
+            d.callback(&succeeded)
+            d.errback(&failed)
+          else
+            (d ? succeeded : failed).call
+          end
+
+=begin
+        unless receive_recipient rcpt
+          send_data ""550 recipient is unacceptable\r\n""
+        else
+          send_data ""250 Ok\r\n""
+          @state << :rcpt unless @state.include?(:rcpt)
+        end
+=end
+        end
+      end
+","#--
+# Since we require :mail_from to have been seen before we process RCPT TO,
+# we don't need to repeat the tests for TLS and AUTH.
+# Note that we don't remember or do anything else with the recipients.
+# All of that is on the user code.
+# TODO: we should enforce user-definable limits on the total number of
+# recipients per transaction.
+# We might want to make sure that a given recipient is only seen once, but
+# for now we'll let that be the user's problem.
+#
+# User-written code can return a deferrable from receive_recipient.
+#
+"
+EventMachine::Protocols::SmtpServer,process_data_line,ln,"ln => String
+",Array<Symbol>,"      def process_data_line ln
+        if ln == "".""
+          if @databuffer.length > 0
+            receive_data_chunk @databuffer
+            @databuffer.clear
+          end
+
+
+          succeeded = proc {
+            send_data ""250 Message accepted\r\n""
+            reset_protocol_state
+          }
+          failed = proc {
+            send_data ""550 Message rejected\r\n""
+            reset_protocol_state
+          }
+          d = receive_message
+
+          if d.respond_to?(:set_deferred_status)
+            d.callback(&succeeded)
+            d.errback(&failed)
+          else
+            (d ? succeeded : failed).call
+          end
+
+          @state -= [:data, :mail_from, :rcpt]
+        else
+          # slice off leading . if any
+          ln.slice!(0...1) if ln[0] == ?.
+          @databuffer << ln
+          if @databuffer.length > @@parms[:chunksize]
+            receive_data_chunk @databuffer
+            @databuffer.clear
+          end
+        end
+      end
+","# Send the incoming data to the application one chunk at a time, rather than
+# one line at a time. That lets the application be a little more flexible about
+# storing to disk, etc.
+# Since we clear the chunk array every time we submit it, the caller needs to be
+# aware to do things like dup it if he wants to keep it around across calls.
+#
+# Resets the transaction upon disposition of the incoming message.
+# RFC5321 says this about the MAIL FROM command:
+#  ""This command tells the SMTP-receiver that a new mail transaction is
+#   starting and to reset all its state tables and buffers, including any
+#   recipients or mail data.""
+#
+# Equivalent behaviour is implemented by resetting after a completed transaction.
+#
+# User-written code can return a Deferrable as a response from receive_message.
+#
+"
+EventMachine::Protocols::SmtpServer,get_server_greeting,"","",String,"      def get_server_greeting
+        ""EventMachine SMTP Server""
+      end
+","#------------------------------------------
+# Everything from here on can be overridden in user code.
+# The greeting returned in the initial connection message to the client.
+"
+EventMachine::Protocols::SmtpServer,get_server_domain,"","",String,"      def get_server_domain
+        ""Ok EventMachine SMTP Server""
+      end
+","# The domain name returned in the first line of the response to a
+# successful EHLO or HELO command.
+"
+EventMachine::Protocols::SmtpServer,receive_ehlo_domain,domain,"domain => String
+",true,"      def receive_ehlo_domain domain
+        true
+      end
+","# A false response from this user-overridable method will cause a
+# 550 error to be returned to the remote client.
+#
+"
+EventMachine::Protocols::SmtpServer,receive_data_command,"","",true,"      def receive_data_command
+        true
+      end
+","# Called when the remote peer sends the DATA command.
+# Returning false will cause us to send a 550 error to the peer.
+# This can be useful for dealing with problems that arise from processing
+# the whole set of sender and recipients.
+#
+"
+EventMachine::Protocols::SmtpServer,receive_transaction,"","",nil,"      def receive_transaction
+      end
+","# This is called when the protocol state is reset. It happens
+# when the remote client calls EHLO/HELO or RSET.
+"
