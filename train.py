@@ -41,7 +41,7 @@ tf.flags.DEFINE_float("dropout_keep_prob", 0.5, "Dropout keep probability (defau
 
 
 # Training parameters
-tf.flags.DEFINE_integer("batch_size", 2, "Batch Size (default: 64)")
+tf.flags.DEFINE_integer("batch_size", 32, "Batch Size (default: 64)")
 tf.flags.DEFINE_integer("num_epochs", 200, "Number of training epochs (default: 200)")
 tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
@@ -109,7 +109,7 @@ with tf.Graph().as_default():
         ###################################################################### RNN
         nn = RNN(
             sequence_length=x_train.shape[1],
-            num_classes=3, # y_train.shape[1]
+            num_classes=7, # y_train.shape[1]
             vocab_size=len(vocab_processor.vocabulary_),
             embedding_size=FLAGS.embedding_dim,
             cell_type=FLAGS.cell_type,
@@ -186,11 +186,12 @@ with tf.Graph().as_default():
               nn.input_y: y_batch,
               nn.dropout_keep_prob: FLAGS.dropout_keep_prob
             }
-            _, step, summaries, loss, accuracy = sess.run(
-                [train_op, global_step, train_summary_op, nn.loss, nn.accuracy],
+            _, step, summaries, loss, accuracy, predictions, input_y = sess.run(
+                [train_op, global_step, train_summary_op, nn.loss, nn.accuracy, nn.predictions, nn.input_y],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
             print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            # print("{}, {}".format(str(predictions), str(input_y)))
             train_summary_writer.add_summary(summaries, step)
 
         def dev_step(x_batch, y_batch, writer=None):
@@ -206,7 +207,7 @@ with tf.Graph().as_default():
                 [global_step, dev_summary_op, nn.loss, nn.accuracy],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
-            print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy, ))
             if writer:
                 writer.add_summary(summaries, step)
 

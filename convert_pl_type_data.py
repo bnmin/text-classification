@@ -1,5 +1,7 @@
 import csv
+import json
 import os
+import re
 
 def tokenize(s):
     tokens = []
@@ -57,8 +59,34 @@ def convert_csv_to_data(csv_file, data_file):
             if return_type in return_type_kept and comments:
                 fp_out.write (return_type + "\t" + comments + "\n")
 
+def sanitize(s):
+    s=s.replace('\n', ' ').replace('\t', ' ')
+    re.sub(' +', ' ', s)
+
+    # This may not be what we want
+    s=s.replace("Array<String>", "Array").lower()
+
+    return s
+
+def convert_json_to_data(json_file, data_file):
+    return_type_kept = ["string", "void", "array", "hash", "boolean", "integer", "object"]
+    with open(data_file, 'w') as fp_out:
+        raw_data = json.loads(open(json_file).read())
+        for app_name in raw_data.keys():
+            for class_name in raw_data[app_name].keys():
+                for method_name in raw_data[app_name][class_name].keys():
+                    fields = raw_data[app_name][class_name][method_name]
+                    if "return" in fields and "docstring" in fields:
+                        docstring = sanitize(fields["docstring"]).strip()
+                        ret = sanitize(fields["return"]).strip()
+
+                        if docstring and ret in return_type_kept:
+                            fp_out.write(ret + "\t" + docstring + "\n")
 
 if __name__ == "__main__":
-    csv_file="/mnt/c/Users/bonan/OneDrive/Repo/github/text-classification.pl-type-inference/data/types/carrierwave_observed_types.csv"
-    data_file="/mnt/c/Users/bonan/OneDrive/Repo/github/text-classification.pl-type-inference/data/type_inference_test.txt"
-    convert_csv_to_data(csv_file, data_file)
+    # csv_file="/mnt/c/Users/bonan/OneDrive/Repo/github/text-classification.pl-type-inference/data/types/carrierwave_observed_types.csv"
+    # data_file="/mnt/c/Users/bonan/OneDrive/Repo/github/text-classification.pl-type-inference/data/type_inference_test.txt"
+
+    json_file = "/mnt/c/Users/bmin/Repo/text-classification/data/type-data.json"
+    data_file = "/mnt/c/Users/bmin/Repo/text-classification/data/type_inference_test.txt"
+    convert_json_to_data(json_file, data_file)
