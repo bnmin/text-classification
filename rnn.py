@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 
 class RNN:
     def __init__(self, sequence_length, num_classes, vocab_size, embedding_size,
@@ -22,11 +23,19 @@ class RNN:
         with tf.name_scope("rnn"):
             cell = self._get_cell(hidden_size, cell_type)
             cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=self.dropout_keep_prob)
-            all_outputs, _ = tf.nn.dynamic_rnn(cell=cell,
+            self.all_outputs, _ = tf.nn.dynamic_rnn(cell=cell,
                                                inputs=self.embedded_chars,
                                                sequence_length=text_length,
                                                dtype=tf.float32)
-            self.h_outputs = self.last_relevant(all_outputs, text_length)
+            # self.h_outputs = self.last_relevant(all_outputs, text_length)
+
+
+        # Attention
+        with tf.name_scope("attention"):
+            self.attention_score = tf.nn.softmax(tf.contrib.slim.fully_connected(self.all_outputs, 1))
+            self.h_outputs = tf.squeeze(
+                tf.matmul(tf.transpose(self.all_outputs, perm=[0, 2, 1]), self.attention_score),
+                axis=-1)
 
         # Final scores and predictions
         with tf.name_scope("output"):
