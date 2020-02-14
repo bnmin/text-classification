@@ -21,6 +21,7 @@ from tensorflow.contrib import learn
 
 # Data loading params
 tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for validation")
+tf.flags.DEFINE_float("test_sample_percentage", .1, "Percentage of the training data to use for blind-test")
 tf.flags.DEFINE_string("positive_data_file", "./data/rt-polaritydata/rt-polarity.pos", "Data source for the positive data.")
 tf.flags.DEFINE_string("negative_data_file", "./data/rt-polaritydata/rt-polarity.neg", "Data source for the negative data.")
 tf.flags.DEFINE_string("data_file", "./data/type_inference_test.txt", "Data file.")
@@ -42,7 +43,7 @@ tf.flags.DEFINE_float("dropout_keep_prob", 0.5, "Dropout keep probability (defau
 
 # Training parameters
 tf.flags.DEFINE_integer("batch_size", 32, "Batch Size (default: 64)")
-tf.flags.DEFINE_integer("num_epochs", 200, "Number of training epochs (default: 200)")
+tf.flags.DEFINE_integer("num_epochs", 1, "Number of training epochs (default: 200)")
 tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
 tf.flags.DEFINE_integer("num_checkpoints", 5, "Number of checkpoints to store (default: 5)")
@@ -80,11 +81,14 @@ x_shuffled = x[shuffle_indices]
 y_shuffled = y[shuffle_indices]
 
 # Split train/dev set
-dev_sample_index = -1 * int(FLAGS.dev_sample_percentage * float(len(y)))
-x_train, x_dev = x_shuffled[:dev_sample_index], x_shuffled[dev_sample_index:]
-y_train, y_dev = y_shuffled[:dev_sample_index], y_shuffled[dev_sample_index:]
+
+dev_sample_index = int((1-FLAGS.dev_sample_percentage-FLAGS.test_sample_percentage) * float(len(y)))
+test_sample_index = int((1-FLAGS.test_sample_percentage) * float(len(y)))
+
+x_train, x_dev, x_test = x_shuffled[0:dev_sample_index], x_shuffled[dev_sample_index:test_sample_index], x_shuffled[test_sample_index:]
+y_train, y_dev, y_test = y_shuffled[0:dev_sample_index], y_shuffled[dev_sample_index:test_sample_index], y_shuffled[test_sample_index:]
 print("Vocabulary Size: {:d}".format(len(vocab_processor.vocabulary_)))
-print("Train/Dev split: {:d}/{:d}".format(len(y_train), len(y_dev)))
+print("Train/Dev/test split: {:d}/{:d}/{:d}".format(len(y_train), len(y_dev), len(y_test)))
 
 # Training
 # ==================================================
@@ -194,9 +198,9 @@ with tf.Graph().as_default():
             # print("{}, {}".format(str(predictions), str(input_y)))
             train_summary_writer.add_summary(summaries, step)
 
-        def dev_step(x_batch, y_batch, writer=None):
+        def eval_step(x_batch, y_batch, writer=None):
             """
-            Evaluates model on a dev set
+            Evaluates model on a dev/test set
             """
             feed_dict = {
               nn.input_x: x_batch,
@@ -220,9 +224,12 @@ with tf.Graph().as_default():
             train_step(x_batch, y_batch)
             current_step = tf.train.global_step(sess, global_step)
             if current_step % FLAGS.evaluate_every == 0:
-                print("\nEvaluation:")
-                dev_step(x_dev, y_dev, writer=dev_summary_writer)
+                print("\nEvaluation on dev:")
+                eval_step(x_dev, y_dev, writer=dev_summary_writer)
                 print("")
             if current_step % FLAGS.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=current_step)
                 print("Saved model checkpoint to {}\n".format(path))
+
+        print("\nEvaluation on blind-test:")
+        eval_step(x_test, y_test)
